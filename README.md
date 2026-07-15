@@ -14,9 +14,17 @@ control plane — this is that control plane.**
 
 ## Status
 
-Milestone **M1 — Foundation** complete: repo + CI scaffold, `AgentPayToken`,
-`PriceFeedAdapter` (live-oracle USD↔APT conversion with staleness/sanity guards), and
-`ServiceRegistry`, with **100% line/branch coverage** on product contracts. See the
+Milestones **M1–M3** complete:
+- **M1 Foundation:** repo + CI scaffold, `AgentPayToken`, `PriceFeedAdapter`
+  (live-oracle USD↔APT with staleness/sanity guards), `ServiceRegistry`.
+- **M2 The product:** `AgentWallet` + `AgentWalletFactory` enforcing the full spend
+  policy at `spend()` time (pause layering, allowlist, per-tx cap, daily budget,
+  provider-staking gate, oracle gating) with an owner/agent role split.
+- **M3 Economics:** `ProviderStaking` (cooldown unstake, governance slashing to
+  treasury) and `SettlementEscrow` (pull-over-push, optional dispute-window release,
+  reentrancy-safe).
+
+**122 tests, 100% line / ~97% branch coverage** on product contracts. See the
 [milestone plan](CAPSTONE_BUILD_BRIEF.md#9-milestone-order-each-ends-green-tests-pass-coverage-holds-committed).
 
 ## Architecture

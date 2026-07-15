@@ -8,13 +8,14 @@ import {IPriceFeedAdapter} from "./interfaces/IPriceFeedAdapter.sol";
 import {IServiceRegistry} from "./interfaces/IServiceRegistry.sol";
 import {IProviderStaking} from "./interfaces/IProviderStaking.sol";
 import {ISettlementEscrow} from "./interfaces/ISettlementEscrow.sol";
+import {IWalletAuthorizer} from "./interfaces/IWalletAuthorizer.sol";
 
 /// @title AgentWalletFactory
 /// @notice Deploys {AgentWallet} instances that share one set of platform
 ///         dependencies (token, policy, price feed, registry, staking, escrow).
 /// @dev Also the authority on wallet provenance: {isWallet} lets the settlement
 ///      escrow authorize only payers that this factory produced.
-contract AgentWalletFactory {
+contract AgentWalletFactory is IWalletAuthorizer {
     IERC20 public immutable token;
     IPolicyParameters public immutable policy;
     IPriceFeedAdapter public immutable priceFeed;
@@ -27,7 +28,7 @@ contract AgentWalletFactory {
     address[] public allWallets;
 
     /// @notice wallet address => created by this factory.
-    mapping(address => bool) public isWallet;
+    mapping(address => bool) public override isWallet;
 
     /// @notice owner => their wallets.
     mapping(address => address[]) private _walletsOfOwner;

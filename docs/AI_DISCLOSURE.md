@@ -86,4 +86,48 @@ and licenses in the README.
 
 ---
 
-_Add one section per milestone (M3–M8) as the project progresses._
+### M3 — Economics (`ProviderStaking`, `SettlementEscrow`)
+
+**Date:** 2026-07-15
+
+**AI-generated (Claude Code):**
+- `ProviderStaking.sol`: per-provider APT collateral; stake, cooldown unstake
+  (cooldown = live `disputeWindow`, still slashable while cooling down),
+  `cancelUnstake`, `withdraw`, and authority-gated `slash` of `slashBps` of total
+  collateral to the live `treasury`. All economic parameters read live from
+  `IPolicyParameters`.
+- `SettlementEscrow.sol`: pull-over-push settlement with two modes selected by the
+  live `disputeWindow` — immediate withdrawable (window 0) or a time-locked
+  payment released after the window by a permissionless crank. `withdraw` is
+  checks-effects-interactions + `nonReentrant`. Only wallets vouched for by the
+  `IWalletAuthorizer` (the factory) may `credit`.
+- `IWalletAuthorizer` interface; `AgentWalletFactory` now implements it.
+- Test mocks: `MockWalletAuthorizer`, and a genuine reentrancy harness
+  (`ReentrantToken` ERC-777-style hook + `ReentrantAttacker`) plus
+  `RevertingReceiver`.
+- Test suites: `ProviderStaking.test.ts`, `SettlementEscrow.test.ts` (incl. a real
+  reentrant-withdraw attack blocked by the guard, and the reverting-provider
+  cannot-block-a-spend property), and `integration/Economics.integration.test.ts`
+  exercising the full real stack (stake → spend → windowed release → withdraw,
+  plus governance slash and understaked-rejection).
+- Coverage gate script filters to product contracts; 100% lines, ~97% branches.
+
+**Design decisions (from the brief) applied by AI:**
+- Cooldown = `disputeWindow` with cooling-down collateral kept slashable: a
+  provider cannot stake, misbehave, then yank collateral before governance acts.
+- Escrow↔factory constructor cycle broken in the integration test by predicting
+  the factory's CREATE address (documented in the test).
+
+**Notes / accepted limitations:**
+- Automated payment clawback / dispute arbitration is out of scope per the brief;
+  the recourse for bad service is governance slashing the provider's stake. The
+  escrow's dispute window is a settlement time-lock, not an arbitration flow.
+- 5 uncovered branches are `nonReentrant` guard revert-paths (would require a
+  per-function reentrancy attack to hit); left uncovered as low-value defensive
+  paths. Aggregate branch coverage stays well above the 90% gate.
+
+**Hand-modified:** _(record any direct edits here as they happen)_
+
+---
+
+_Add one section per milestone (M4–M8) as the project progresses._

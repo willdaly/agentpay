@@ -416,6 +416,27 @@ describe("AgentWallet", () => {
         .withArgs(true);
     });
 
+    it("every admin setter rejects a non-owner caller", async () => {
+      const f = await loadFixture(deploy);
+      const w = f.wallet.connect(f.agent); // agent is not the owner
+      await expect(w.setLocalPaused(true)).to.be.revertedWithCustomError(
+        f.wallet,
+        "OwnableUnauthorizedAccount",
+      );
+      await expect(w.setLocalMaxPerTxUsd(usd(1))).to.be.revertedWithCustomError(
+        f.wallet,
+        "OwnableUnauthorizedAccount",
+      );
+      await expect(w.setLocalDailyBudgetUsd(usd(1))).to.be.revertedWithCustomError(
+        f.wallet,
+        "OwnableUnauthorizedAccount",
+      );
+      await expect(w.setServiceAllowed(1n, false)).to.be.revertedWithCustomError(
+        f.wallet,
+        "OwnableUnauthorizedAccount",
+      );
+    });
+
     it("effective daily budget falls back to the governance default", async () => {
       const f = await loadFixture(deploy);
       expect(await f.wallet.effectiveDailyBudgetUsd()).to.equal(DEFAULT_DAILY);
