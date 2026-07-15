@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Node / Hardhat (AgentPay) ---
+node_modules/
+agent/node_modules/
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+gas-report.txt
+dist/
+
+# Generated deployment records (kept out of VCS; addresses.md is curated by hand)
+deployments.json
+deployments/*.json
