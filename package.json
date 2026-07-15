@@ -7,7 +7,7 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "coverage": "hardhat coverage",
-    "coverage:check": "hardhat coverage && node scripts/check-coverage.js",
+    "coverage:check": "rm -rf coverage coverage.json && hardhat coverage && node scripts/check-coverage.js",
     "gas": "REPORT_GAS=true hardhat test",
     "lint": "solhint 'contracts/**/*.sol'",
     "lint:fix": "solhint 'contracts/**/*.sol' --fix",

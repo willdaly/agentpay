@@ -48,4 +48,42 @@ and licenses in the README.
 
 ---
 
-_Add one section per milestone (M2–M8) as the project progresses._
+### M2 — The product (`AgentWallet` + factory, full policy enforcement)
+
+**Date:** 2026-07-15
+
+**AI-generated (Claude Code):**
+- `AgentWallet.sol` (the product) with full `spend()` policy enforcement in
+  checks-effects-interactions order + `nonReentrant`: pause layering, allowlist,
+  registration/active + cross-chain guard, provider-staking gate, per-tx cap
+  (min of local/global), rolling day-bucketed budget, live-oracle read, balance
+  check; typed custom errors; rich `SpendExecuted` event with a policy-snapshot
+  hash. `AgentWalletFactory.sol`.
+- Interface extraction: `IServiceRegistry` (struct moved here; `ServiceRegistry`
+  now implements it), new `IProviderStaking` / `ISettlementEscrow` interfaces.
+- Mocks: `MockPolicyParameters`, `MockProviderStaking`, `MockSettlementEscrow`.
+- Dense test suites (`AgentWallet.test.ts`, `AgentWalletFactory.test.ts`):
+  cap boundaries (exactly-at / one-over), day rollover, allowlist, pause
+  layering, staleness revert, understaked rejection, role auth, snapshot-hash
+  verification. Product contracts remain at 100% lines / 94% branches.
+
+**Design decisions made by the student (from the brief) and applied by AI:**
+- **Role split (owner vs agent).** The brief's demo has the *owner* set the
+  allowlist/budget and the *agent* spend. AgentWallet therefore separates an
+  admin `owner` (sets policy, funds, appoints the operator) from an `agent`
+  operator key that may only `spend()` within limits and cannot raise them. This
+  makes "access-controlled agent wallets" a real control rather than illusory.
+
+**Deviations from the brief (with rationale, per brief §11):**
+- The **provider-staking check was included in M2** rather than deferred to M3.
+  The brief sequences it into M3 ("wire understaked-rejection into AgentWallet"),
+  but adding it later would churn the core contract and its dense test suite.
+  AgentWallet depends on the `IProviderStaking` *interface* (mock now, real
+  `ProviderStaking` in M3), so no rework is needed when M3 lands — only the
+  concrete dependency is swapped at deploy time.
+
+**Hand-modified:** _(record any direct edits here as they happen)_
+
+---
+
+_Add one section per milestone (M3–M8) as the project progresses._

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {IServiceRegistry} from "./interfaces/IServiceRegistry.sol";
+
 /// @title ServiceRegistry
 /// @notice Permissionless catalog of services that AI agents can pay for. Each
 ///         service records its provider, USD price, an integrity hash of its
@@ -16,24 +18,13 @@ pragma solidity 0.8.24;
 ///      document from `metadataURI`, hashes it, and compares — proving the
 ///      off-chain artifact matches exactly what the provider committed on-chain.
 ///      Use {verifyTerms} for that check.
-contract ServiceRegistry {
-    struct Service {
-        // Slot 0: address(20) + uint64(8) + bool(1) = 29 bytes, packed together.
-        address provider; // who registered / gets paid; the staking subject
-        uint64 homeChainSelector; // CCIP chain selector of the settlement chain
-        bool active; // provider can toggle availability without deregistering
-        // Subsequent slots:
-        uint256 priceUsdCents; // service price in USD cents (integer)
-        bytes32 termsHash; // keccak256 of the canonical off-chain terms document
-        string metadataURI; // IPFS CID or URL for full terms / endpoint spec
-    }
-
+contract ServiceRegistry is IServiceRegistry {
     /// @notice serviceId (starts at 1) => service record. Id 0 is never used
     ///         so callers can treat 0 as "unset".
     mapping(uint256 => Service) private _services;
 
     /// @notice Number of services ever registered; also the highest valid id.
-    uint256 public totalServices;
+    uint256 public override totalServices;
 
     event ServiceRegistered(
         uint256 indexed serviceId,
@@ -67,7 +58,7 @@ contract ServiceRegistry {
         bytes32 termsHash,
         string calldata metadataURI,
         uint64 homeChainSelector
-    ) external returns (uint256 serviceId) {
+    ) external override returns (uint256 serviceId) {
         if (bytes(metadataURI).length == 0) revert EmptyMetadata();
         if (homeChainSelector == 0) revert ZeroChainSelector();
 
@@ -94,7 +85,7 @@ contract ServiceRegistry {
         uint256 priceUsdCents,
         bytes32 termsHash,
         string calldata metadataURI
-    ) external {
+    ) external override {
         Service storage s = _requireProvider(serviceId);
         if (bytes(metadataURI).length == 0) revert EmptyMetadata();
 
@@ -106,7 +97,7 @@ contract ServiceRegistry {
     }
 
     /// @notice Toggle a service's availability. Only its provider may call.
-    function setActive(uint256 serviceId, bool active) external {
+    function setActive(uint256 serviceId, bool active) external override {
         Service storage s = _requireProvider(serviceId);
         s.active = active;
         emit ServiceActiveSet(serviceId, active);
@@ -115,24 +106,24 @@ contract ServiceRegistry {
     // --- Views ---
 
     /// @notice Full service record. Reverts if the id was never registered.
-    function getService(uint256 serviceId) external view returns (Service memory) {
+    function getService(uint256 serviceId) external view override returns (Service memory) {
         _requireExists(serviceId);
         return _services[serviceId];
     }
 
     /// @notice The provider address for a service (cheap accessor for consumers).
-    function providerOf(uint256 serviceId) external view returns (address) {
+    function providerOf(uint256 serviceId) external view override returns (address) {
         _requireExists(serviceId);
         return _services[serviceId].provider;
     }
 
     /// @notice True if the id has been registered (regardless of active flag).
-    function exists(uint256 serviceId) public view returns (bool) {
+    function exists(uint256 serviceId) public view override returns (bool) {
         return serviceId != 0 && serviceId <= totalServices;
     }
 
     /// @notice True if the service exists and is currently active.
-    function isActive(uint256 serviceId) external view returns (bool) {
+    function isActive(uint256 serviceId) external view override returns (bool) {
         return exists(serviceId) && _services[serviceId].active;
     }
 
@@ -143,6 +134,7 @@ contract ServiceRegistry {
     function verifyTerms(uint256 serviceId, bytes calldata termsDocument)
         external
         view
+        override
         returns (bool)
     {
         _requireExists(serviceId);
