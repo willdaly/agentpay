@@ -49,31 +49,17 @@ describe("Integration: economics (staking + escrow + wallet)", () => {
       governor.address,
     );
 
-    const Factory = await ethers.getContractFactory("AgentWalletFactory");
-    // Escrow needs the factory (authorizer) address; factory needs the escrow
-    // address. Deploy escrow first with a placeholder? No: deploy factory, then
-    // escrow with factory as authorizer, then wallets — but factory takes escrow
-    // in its constructor. Resolve by deploying escrow against the factory after
-    // the factory exists; the factory only needs the escrow address, which we
-    // compute is not circular because AgentWallet holds escrow, factory passes it.
-    // So: deploy escrow with a temporary authorizer? Cleaner: deploy factory with
-    // the escrow, and escrow with the factory. Break the cycle by predicting the
-    // factory address.
-    const deployerNonce = await ethers.provider.getTransactionCount(deployer.address);
-    // The next contract deployer creates: escrow (nonce n), factory (nonce n+1).
-    const predictedFactory = ethers.getCreateAddress({
-      from: deployer.address,
-      nonce: deployerNonce + 1,
-    });
-
+    // Escrow and factory are mutually dependent (escrow authorizes payers via the
+    // factory; the factory wires the escrow into each wallet). The escrow's
+    // one-time setAuthorizer breaks the cycle — no address prediction needed.
     const Escrow = await ethers.getContractFactory("SettlementEscrow");
     const escrow = await Escrow.deploy(
       await token.getAddress(),
       await policy.getAddress(),
-      predictedFactory, // authorizer = the factory we are about to deploy
       governor.address,
     );
 
+    const Factory = await ethers.getContractFactory("AgentWalletFactory");
     const factory = await Factory.deploy(
       await token.getAddress(),
       await policy.getAddress(),
@@ -82,8 +68,9 @@ describe("Integration: economics (staking + escrow + wallet)", () => {
       await staking.getAddress(),
       await escrow.getAddress(),
       SELECTOR,
+      ethers.ZeroAddress, // cross-chain router not used in this suite
     );
-    expect(await factory.getAddress()).to.equal(predictedFactory);
+    await escrow.connect(governor).setAuthorizer(await factory.getAddress());
 
     // Create a wallet.
     const tx = await factory.createWallet(owner.address, agent.address);

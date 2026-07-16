@@ -60,11 +60,29 @@ ownership to the timelock (DAO-only slashing).
 
 | Item | Sepolia | Base Sepolia |
 |------|---------|--------------|
-| ETH/USD Data Feed | `0x694AA1769357215DE4FAC081bf1f309aDC325306` ✓ (8 dp, 3600s) | _re-verify at M6_ |
-| CCIP Router | _verify at M6_ | _verify at M6_ |
-| LINK token | _verify at M6_ | _verify at M6_ |
-| Chain selector | `16015286601757825753` | `10344971235874465080` |
+| ETH/USD Data Feed | `0x694AA1769357215DE4FAC081bf1f309aDC325306` ✓ (8 dp, 3600s) | `0x4aDC67696bA383F43DD60A9e78F2C97FbbFc7cb1` (re-verify) |
+| CCIP Router | `0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59` ✓ | `0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93` ✓ |
+| LINK token | `0x779877A7B0D9E8603169DdbD7836e478b4624789` ✓ | `0xE4aB69C077896252FAFBD49EFD26B5D171A32410` ✓ |
+| Chain selector | `16015286601757825753` ✓ | `10344971235874465080` ✓ |
 
 > Sepolia ETH/USD verified from Chainlink's reference data directory
-> (`feeds-ethereum-testnet-sepolia.json`). CCIP router/LINK/selector values are
-> re-verified against the current Chainlink CCIP directory before the M6 deploy.
+> (`feeds-ethereum-testnet-sepolia.json`). CCIP router / LINK / chain-selector
+> values verified from the Chainlink CCIP directory (testnet), which also confirms
+> **Sepolia → Base Sepolia is a live lane**. LINK addresses are recorded for
+> completeness only: this build pays CCIP fees in **native ETH** (see below).
+
+## Cross-chain lane runbook (M6)
+
+```bash
+# 1. Deploy each side (idempotent; roles come from config/networks.ts)
+npx hardhat run scripts/deploy/deploy.ts --network sepolia       # home:   full stack
+npx hardhat run scripts/deploy/deploy.ts --network baseSepolia   # remote: settlement only
+
+# 2. Open the lane — run once per side, AFTER both are deployed
+npx hardhat run scripts/deploy/wire-lane.ts --network sepolia      # opens lane + funds ETH fees
+npx hardhat run scripts/deploy/wire-lane.ts --network baseSepolia  # allowlists + seeds liquidity
+```
+
+The home side needs native ETH on the router for CCIP fees; the remote side needs
+APT liquidity on its router to settle incoming spends. `wire-lane.ts` provisions
+both and is idempotent.

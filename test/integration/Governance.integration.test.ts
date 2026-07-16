@@ -81,18 +81,14 @@ describe("Integration: governance (live parameter store)", () => {
       await timelock.getAddress(),
     );
 
-    // Break the escrow<->factory constructor cycle via CREATE-address prediction.
-    const nonce = await ethers.provider.getTransactionCount(deployer.address);
-    const predictedFactory = ethers.getCreateAddress({
-      from: deployer.address,
-      nonce: nonce + 1,
-    });
+    // Escrow and factory are mutually dependent; the escrow's one-time
+    // setAuthorizer breaks the cycle. The escrow is owned by the deployer purely
+    // to perform that one wiring call — it exposes no live admin lever.
     const Escrow = await ethers.getContractFactory("SettlementEscrow");
     const escrow = await Escrow.deploy(
       await token.getAddress(),
       await governor.getAddress(),
-      predictedFactory,
-      await timelock.getAddress(),
+      deployer.address,
     );
     const Factory = await ethers.getContractFactory("AgentWalletFactory");
     const factory = await Factory.deploy(
@@ -103,7 +99,9 @@ describe("Integration: governance (live parameter store)", () => {
       await staking.getAddress(),
       await escrow.getAddress(),
       SELECTOR,
+      ethers.ZeroAddress, // cross-chain router not used in this suite
     );
+    await escrow.connect(deployer).setAuthorizer(await factory.getAddress());
 
     // Create a wallet, register a $0.50 service, stake the provider, fund + allow.
     const tx = await factory.createWallet(owner.address, agent.address);

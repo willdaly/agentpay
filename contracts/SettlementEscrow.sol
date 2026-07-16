@@ -41,7 +41,15 @@ contract SettlementEscrow is ISettlementEscrow, Ownable, ReentrancyGuard {
 
     IERC20 public immutable token; // APT
     IPolicyParameters public immutable policy; // live economic parameters
-    IWalletAuthorizer public immutable authorizer; // vouches for genuine wallets
+
+    /// @notice Vouches for genuine payers (the factory on the home chain; an
+    ///         {AllowlistAuthorizer} naming the router on a remote chain).
+    /// @dev Set exactly once by the owner right after deployment, then effectively
+    ///      immutable. This is an initializer, not a live admin lever: it exists
+    ///      because the escrow and its authorizer are mutually dependent at
+    ///      construction, and a one-time setter breaks that cycle without
+    ///      resorting to CREATE-address prediction.
+    IWalletAuthorizer public authorizer;
 
     /// @notice Balance each provider can pull right now.
     mapping(address => uint256) public withdrawable;
@@ -72,6 +80,8 @@ contract SettlementEscrow is ISettlementEscrow, Ownable, ReentrancyGuard {
     );
     event Withdrawn(address indexed provider, uint256 amount);
 
+    event AuthorizerSet(address indexed authorizer);
+
     error NotAuthorizedPayer(address caller);
     error ZeroAddress();
     error ZeroAmount();
@@ -79,27 +89,34 @@ contract SettlementEscrow is ISettlementEscrow, Ownable, ReentrancyGuard {
     error AlreadyReleased(uint256 paymentId);
     error ReleaseNotReady(uint256 paymentId, uint256 releaseAt);
     error NothingToWithdraw();
+    error AuthorizerAlreadySet();
+    error AuthorizerNotSet();
 
-    constructor(
-        IERC20 _token,
-        IPolicyParameters _policy,
-        IWalletAuthorizer _authorizer,
-        address _owner
-    ) Ownable(_owner) {
-        if (
-            address(_token) == address(0) || address(_policy) == address(0)
-                || address(_authorizer) == address(0)
-        ) revert ZeroAddress();
+    constructor(IERC20 _token, IPolicyParameters _policy, address _owner)
+        Ownable(_owner)
+    {
+        if (address(_token) == address(0) || address(_policy) == address(0)) {
+            revert ZeroAddress();
+        }
         token = _token;
         policy = _policy;
+    }
+
+    /// @notice Set the payer authorizer. Callable once, by the owner, at deploy time.
+    function setAuthorizer(IWalletAuthorizer _authorizer) external onlyOwner {
+        if (address(_authorizer) == address(0)) revert ZeroAddress();
+        if (address(authorizer) != address(0)) revert AuthorizerAlreadySet();
         authorizer = _authorizer;
+        emit AuthorizerSet(address(_authorizer));
     }
 
     /// @inheritdoc ISettlementEscrow
     /// @dev Tokens MUST already have been transferred to this escrow by the caller
-    ///      (the AgentWallet) before this call; only vouched wallets may call.
+    ///      (the AgentWallet) before this call; only vouched payers may call.
     function credit(address provider, uint256 serviceId, uint256 amount) external {
-        if (!authorizer.isWallet(msg.sender)) revert NotAuthorizedPayer(msg.sender);
+        IWalletAuthorizer auth = authorizer;
+        if (address(auth) == address(0)) revert AuthorizerNotSet();
+        if (!auth.isWallet(msg.sender)) revert NotAuthorizedPayer(msg.sender);
         if (provider == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 

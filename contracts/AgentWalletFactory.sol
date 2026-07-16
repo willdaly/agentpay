@@ -9,6 +9,7 @@ import {IServiceRegistry} from "./interfaces/IServiceRegistry.sol";
 import {IProviderStaking} from "./interfaces/IProviderStaking.sol";
 import {ISettlementEscrow} from "./interfaces/ISettlementEscrow.sol";
 import {IWalletAuthorizer} from "./interfaces/IWalletAuthorizer.sol";
+import {ICrossChainSpendRouter} from "./interfaces/ICrossChainSpendRouter.sol";
 
 /// @title AgentWalletFactory
 /// @notice Deploys {AgentWallet} instances that share one set of platform
@@ -23,6 +24,10 @@ contract AgentWalletFactory is IWalletAuthorizer {
     IProviderStaking public immutable staking;
     ISettlementEscrow public immutable escrow;
     uint64 public immutable localChainSelector;
+
+    /// @notice Cross-chain router shared by every wallet. address(0) disables
+    ///         remote-chain spending for all wallets from this factory.
+    ICrossChainSpendRouter public immutable crossChainRouter;
 
     /// @notice Every wallet ever created by this factory, in creation order.
     address[] public allWallets;
@@ -46,7 +51,8 @@ contract AgentWalletFactory is IWalletAuthorizer {
         IServiceRegistry _registry,
         IProviderStaking _staking,
         ISettlementEscrow _escrow,
-        uint64 _localChainSelector
+        uint64 _localChainSelector,
+        ICrossChainSpendRouter _crossChainRouter
     ) {
         if (
             address(_token) == address(0) || address(_policy) == address(0)
@@ -61,6 +67,7 @@ contract AgentWalletFactory is IWalletAuthorizer {
         staking = _staking;
         escrow = _escrow;
         localChainSelector = _localChainSelector;
+        crossChainRouter = _crossChainRouter; // may be zero: cross-chain disabled
     }
 
     /// @notice Deploy a new agent wallet.
@@ -80,7 +87,8 @@ contract AgentWalletFactory is IWalletAuthorizer {
             registry,
             staking,
             escrow,
-            localChainSelector
+            localChainSelector,
+            crossChainRouter
         );
         wallet = address(w);
 

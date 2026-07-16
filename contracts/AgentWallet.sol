@@ -11,6 +11,7 @@ import {IPriceFeedAdapter} from "./interfaces/IPriceFeedAdapter.sol";
 import {IServiceRegistry} from "./interfaces/IServiceRegistry.sol";
 import {IProviderStaking} from "./interfaces/IProviderStaking.sol";
 import {ISettlementEscrow} from "./interfaces/ISettlementEscrow.sol";
+import {ICrossChainSpendRouter} from "./interfaces/ICrossChainSpendRouter.sol";
 
 /// @title AgentWallet — the product
 /// @notice A per-agent smart account that holds APT and enforces on-chain spend
@@ -33,6 +34,20 @@ import {ISettlementEscrow} from "./interfaces/ISettlementEscrow.sol";
 contract AgentWallet is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    /// @notice Everything {_authorizeSpend} decides about a prospective spend.
+    /// @dev Returned in memory so the checks can live in their own function
+    ///      without pushing `spend` past the EVM stack limit.
+    struct SpendContext {
+        address provider; // who gets paid
+        uint64 chainSelector; // the service's settlement chain
+        bool isRemote; // settles on another chain => route over CCIP
+        uint256 usdValue; // USD (8-decimal) value of this spend
+        uint256 tokenAmount; // APT (wei) at the live oracle price
+        uint256 today; // day bucket this spend lands in
+        uint256 newSpentUsd; // day-bucket spend counter after this spend
+        bytes32 snapshot; // hash of the policy in force (audit handle)
+    }
+
     // --- Immutable wiring (shared across all wallets from one factory) ---
 
     IERC20 public immutable token; // APT
@@ -40,8 +55,14 @@ contract AgentWallet is Ownable, ReentrancyGuard {
     IPriceFeedAdapter public immutable priceFeed; // USD <-> APT at live oracle price
     IServiceRegistry public immutable registry; // service catalog
     IProviderStaking public immutable staking; // provider collateral gate
-    ISettlementEscrow public immutable escrow; // pull-payment sink
+    ISettlementEscrow public immutable escrow; // pull-payment sink (local services)
     uint64 public immutable localChainSelector; // CCIP selector of this chain
+
+    /// @notice Cross-chain router for services that settle on another chain.
+    /// @dev address(0) disables cross-chain spending: a remote service then reverts
+    ///      with {RemoteServiceUnsupported}. Home-chain policy is enforced BEFORE
+    ///      anything is routed, so the remote leg never widens spending authority.
+    ICrossChainSpendRouter public immutable crossChainRouter;
 
     // --- Local, admin-managed policy ---
 
@@ -114,6 +135,7 @@ contract AgentWallet is Ownable, ReentrancyGuard {
     /// @param _staking Provider staking gate.
     /// @param _escrow Pull-payment settlement sink.
     /// @param _localChainSelector CCIP chain selector of the chain this wallet lives on.
+    /// @param _crossChainRouter Router for remote-chain services; address(0) disables them.
     constructor(
         address _owner,
         address _agent,
@@ -123,7 +145,8 @@ contract AgentWallet is Ownable, ReentrancyGuard {
         IServiceRegistry _registry,
         IProviderStaking _staking,
         ISettlementEscrow _escrow,
-        uint64 _localChainSelector
+        uint64 _localChainSelector,
+        ICrossChainSpendRouter _crossChainRouter
     ) Ownable(_owner) {
         if (
             address(_token) == address(0) || address(_policy) == address(0)
@@ -138,6 +161,7 @@ contract AgentWallet is Ownable, ReentrancyGuard {
         staking = _staking;
         escrow = _escrow;
         localChainSelector = _localChainSelector;
+        crossChainRouter = _crossChainRouter; // may be zero: cross-chain disabled
         agent = _agent; // may be zero; owner can set it later
     }
 
@@ -146,13 +170,66 @@ contract AgentWallet is Ownable, ReentrancyGuard {
     /// @notice Pay for `serviceId` at its registered USD price, converted to APT at
     ///         the live oracle price, subject to every policy check below.
     /// @dev Checks (in order) -> effects -> interactions. `nonReentrant`.
-    /// @return tokenAmount APT (wei) credited to the provider in the escrow.
+    ///      All CHECKS live in {_authorizeSpend}, a view function returning this
+    ///      struct; keeping them there (rather than inline) both isolates the
+    ///      policy logic and keeps `spend` within the EVM's stack limits.
+    /// @return tokenAmount APT (wei) settled for the provider.
     function spend(uint256 serviceId)
         external
         nonReentrant
         returns (uint256 tokenAmount)
     {
         // --- CHECKS ---
+        SpendContext memory ctx = _authorizeSpend(serviceId);
+        tokenAmount = ctx.tokenAmount;
+
+        // --- EFFECTS ---
+        currentDay = ctx.today;
+        spentThisDayUsd = ctx.newSpentUsd;
+
+        // --- INTERACTIONS ---
+        // Both paths share one convention: transfer the APT first, then record the
+        // claim against it. Local services settle in the escrow; remote services
+        // are handed to the CCIP router (which locks the APT and messages its
+        // counterpart). Policy was fully enforced above, on this chain.
+        if (ctx.isRemote) {
+            token.safeTransfer(address(crossChainRouter), tokenAmount);
+            crossChainRouter.routeSpend(
+                ctx.chainSelector, ctx.provider, serviceId, tokenAmount, ctx.usdValue
+            );
+        } else {
+            token.safeTransfer(address(escrow), tokenAmount);
+            escrow.credit(ctx.provider, serviceId, tokenAmount);
+        }
+
+        emit SpendExecuted(
+            address(this),
+            serviceId,
+            ctx.provider,
+            tokenAmount,
+            ctx.usdValue,
+            ctx.chainSelector,
+            ctx.snapshot
+        );
+    }
+
+    /// @notice Run every policy check for `serviceId` without spending anything.
+    /// @dev Reverts with the exact error a real {spend} would. Useful to the
+    ///      off-chain agent as a pre-flight check, and to auditors reading policy.
+    function previewSpend(uint256 serviceId)
+        external
+        view
+        returns (SpendContext memory)
+    {
+        return _authorizeSpend(serviceId);
+    }
+
+    /// @dev The complete policy gate. View-only: it decides, it never mutates.
+    function _authorizeSpend(uint256 serviceId)
+        private
+        view
+        returns (SpendContext memory ctx)
+    {
         if (msg.sender != agent && msg.sender != owner()) {
             revert NotAuthorizedAgent(msg.sender);
         }
@@ -161,55 +238,50 @@ contract AgentWallet is Ownable, ReentrancyGuard {
         if (!registry.isActive(serviceId)) revert ServiceNotActive(serviceId);
 
         IServiceRegistry.Service memory svc = registry.getService(serviceId);
+        ctx.provider = svc.provider;
+        ctx.chainSelector = svc.homeChainSelector;
 
-        if (svc.homeChainSelector != localChainSelector) {
+        // A service that settles on another chain is paid over CCIP. Every check
+        // below still runs HERE, on the home chain, before anything is sent — the
+        // remote leg is settlement only and never widens spending authority.
+        ctx.isRemote = svc.homeChainSelector != localChainSelector;
+        if (ctx.isRemote && address(crossChainRouter) == address(0)) {
             revert RemoteServiceUnsupported(svc.homeChainSelector, localChainSelector);
         }
 
         uint256 required = policy.providerMinStake();
-        uint256 staked = staking.stakedOf(svc.provider);
-        if (staked < required) {
-            revert ProviderUnderstaked(svc.provider, staked, required);
+        {
+            uint256 staked = staking.stakedOf(svc.provider);
+            if (staked < required) {
+                revert ProviderUnderstaked(svc.provider, staked, required);
+            }
         }
 
         // USD value of this spend (8-decimal). $1 == 100 cents == 1e8.
-        uint256 usdValue = svc.priceUsdCents * 1e6;
+        ctx.usdValue = svc.priceUsdCents * 1e6;
 
         uint256 capUsd = _effectiveMaxPerTxUsd();
-        if (usdValue > capUsd) revert ExceedsPerTxCap(usdValue, capUsd);
+        if (ctx.usdValue > capUsd) revert ExceedsPerTxCap(ctx.usdValue, capUsd);
 
         uint256 budgetUsd = _effectiveDailyBudgetUsd();
-        uint256 today = block.timestamp / 1 days;
-        uint256 spentUsd = (today == currentDay) ? spentThisDayUsd : 0;
-        if (spentUsd + usdValue > budgetUsd) {
-            revert ExceedsDailyBudget(usdValue, spentUsd, budgetUsd);
+        ctx.today = block.timestamp / 1 days;
+        uint256 spentUsd = (ctx.today == currentDay) ? spentThisDayUsd : 0;
+        if (spentUsd + ctx.usdValue > budgetUsd) {
+            revert ExceedsDailyBudget(ctx.usdValue, spentUsd, budgetUsd);
+        }
+        ctx.newSpentUsd = spentUsd + ctx.usdValue;
+
+        // Live oracle read; reverts (StalePrice / bad answer) on an unhealthy feed.
+        ctx.tokenAmount = priceFeed.usdToToken(ctx.usdValue);
+
+        {
+            uint256 balance = token.balanceOf(address(this));
+            if (balance < ctx.tokenAmount) {
+                revert InsufficientBalance(ctx.tokenAmount, balance);
+            }
         }
 
-        // Live oracle read; reverts (StalePrice / bad answer) if the feed is unhealthy.
-        tokenAmount = priceFeed.usdToToken(usdValue);
-
-        uint256 balance = token.balanceOf(address(this));
-        if (balance < tokenAmount) revert InsufficientBalance(tokenAmount, balance);
-
-        // --- EFFECTS ---
-        currentDay = today;
-        spentThisDayUsd = spentUsd + usdValue;
-
-        bytes32 snapshot = _policySnapshot(capUsd, budgetUsd, required, usdValue);
-
-        // --- INTERACTIONS ---
-        token.safeTransfer(address(escrow), tokenAmount);
-        escrow.credit(svc.provider, serviceId, tokenAmount);
-
-        emit SpendExecuted(
-            address(this),
-            serviceId,
-            svc.provider,
-            tokenAmount,
-            usdValue,
-            svc.homeChainSelector,
-            snapshot
-        );
+        ctx.snapshot = _policySnapshot(capUsd, budgetUsd, required, ctx.usdValue);
     }
 
     // --- Admin (owner-only) configuration ---

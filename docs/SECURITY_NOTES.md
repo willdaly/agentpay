@@ -53,9 +53,62 @@ Findings are triaged here.
   but means the emergency stop inherits the timelock delay. FUTURE WORK: add a
   fast-path guardian role that can pause instantly (unpause still via governance).
   For the testnet demo the timelock delay is configured short.
-- **`SettlementEscrow` owner is currently unused** (no `onlyOwner` function yet).
-  It is reserved for a future admin/rescue path; flagged so Slither's
-  "owner-never-used" note is expected and triaged, not a surprise.
+- **`SettlementEscrow` owner** exists solely to call `setAuthorizer` once at deploy
+  time (a one-time initializer, not a live admin lever). Resolved at M6: the owner
+  was previously unused and flagged for Slither triage; it now has exactly one
+  narrow job and no standing power over funds.
+
+## Cross-chain notes (M6) — read this section before auditing the bridge
+
+### The lane
+
+Chainlink CCIP, **Sepolia → Base Sepolia**, verified as a live lane in the CCIP
+directory at build time. Routers, LINK, and chain selectors are recorded in
+`docs/addresses.md` and `config/networks.ts` (verified from docs, not memory).
+
+### Decision: data-only messaging + lock-and-credit (NOT CCIP token transfer)
+
+APT is **not** a CCIP-registered cross-chain token. Having CCIP itself move APT
+would require registering it in the Token Admin Registry and deploying burn/mint
+token pools on both chains (the CCT standard) — out of scope for this capstone.
+So CCIP is used for **messaging only**, and value is settled by lock-and-credit.
+This is the fallback the build brief explicitly sanctions, and its costs are:
+
+| Assumption | Consequence | Mitigation / status |
+|---|---|---|
+| Source APT is **locked forever** in the sender router (never burned) | Locked balance grows monotonically; it is not redeemable | Accepted. `rescueLockedTokens` lets the owner recover it. |
+| Destination credits come from a **pre-funded APT liquidity pool** on the remote router | Remote APT is a *separate token deployment*, not a canonical bridged asset — total supply is **not** conserved cryptographically across chains | Accepted and documented. A production build registers APT as a CCT so CCIP's token pools enforce conservation. |
+| Remote liquidity can run dry | `ccipReceive` reverts with `InsufficientLiquidity`; CCIP will not deliver | Tested. `wire-lane.ts` seeds liquidity; monitoring would alert in production. |
+| Router owner is trusted not to drain liquidity | Trusted bridge, not trust-minimized | Accepted for testnet. Ownership is intended to sit with the timelock. |
+
+**This is a trusted bridge.** It is presented as such; no claim of trustlessness.
+
+### What protects the cross-chain path
+
+- **All policy runs on the home chain, before any message is sent.** Pause,
+  allowlist, provider stake, per-tx cap, daily budget, and the live oracle price
+  are all enforced in `AgentWallet._authorizeSpend` prior to `routeSpend`. The
+  remote leg settles value only; it can never widen spending authority. The
+  cross-chain integration suite asserts this directly: for each rejection path it
+  checks `ccipHome.sentCount() == 0`.
+- **Receiver hygiene (standard CCIP).** `ccipReceive` accepts calls only from the
+  local CCIP router, only from allowlisted source chains, and only from
+  allowlisted senders on those chains. All three rejections are tested.
+- **Sender authorization.** `routeSpend` is callable only by an address the
+  `IWalletAuthorizer` (the factory) vouches for. Without this, anyone could trigger
+  a remote credit without paying — the router's most valuable attack surface.
+- **CCIP fees in native ETH** (`feeToken = address(0)`), chosen over LINK to remove
+  a funding-and-approval step. The router holds an ETH budget; `routeSpend` reverts
+  with `InsufficientNativeForFee` rather than failing opaquely.
+
+### Remote-chain parameter drift (accepted)
+
+Governance lives only on the home chain. The remote escrow still needs to read
+`disputeWindow`, so the remote chain runs `RemotePolicyParameters`, an
+owner-administered mirror. The two chains **can drift**. This is safe today because
+only `disputeWindow` is consumed remotely and every spend-gating parameter is
+enforced on the home chain. Future work: push parameter updates over CCIP so the
+DAO is the single source of truth on every chain.
 
 ## Known assumptions / accepted limitations (testnet demo)
 

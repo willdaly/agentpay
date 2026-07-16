@@ -7,12 +7,21 @@ import {
   DeploymentFile,
 } from "../util/deployments";
 
-// Idempotent, network-aware deployment of the full AgentPay stack. Re-running
-// reuses everything already recorded in deployments/<network>.json and deploys
-// only what is missing, so a crash mid-run is resumable.
+// Idempotent, network-aware deployment of the AgentPay stack. Re-running reuses
+// everything already recorded in deployments/<network>.json and deploys only what
+// is missing, so a crash mid-run is resumable.
 //
-//   npx hardhat run scripts/deploy/deploy.ts --network sepolia
-//   npx hardhat run scripts/deploy/deploy.ts --network localhost
+// The shape depends on the network's role (config/networks.ts):
+//   home   — full stack: token, oracle, registry, DAO, staking, escrow, factory,
+//            cross-chain router. Agent wallets and governance live here.
+//   remote — settlement only: token, oracle, registry, mirrored parameters,
+//            escrow, allowlist authorizer, cross-chain router.
+//
+//   npx hardhat run scripts/deploy/deploy.ts --network sepolia      # home
+//   npx hardhat run scripts/deploy/deploy.ts --network baseSepolia  # remote
+//   npx hardhat run scripts/deploy/deploy.ts --network localhost    # home (mock feed)
+//
+// After BOTH sides are deployed, open the lane with scripts/deploy/wire-lane.ts.
 
 async function main() {
   const cfg = getConfig(network.name);
@@ -21,6 +30,7 @@ async function main() {
   const data = loadDeployments(network.name, chainId);
 
   console.log(`\n== Deploying AgentPay to ${cfg.label} (chainId ${chainId}) ==`);
+  console.log(`Role:     ${cfg.role}`);
   console.log(`Deployer: ${deployer.address}`);
   const bal = await ethers.provider.getBalance(deployer.address);
   console.log(`Balance:  ${ethers.formatEther(bal)} ETH\n`);
@@ -74,8 +84,63 @@ async function main() {
     cfg.aptPerEth,
   ]);
 
-  // 4. Service registry.
+  // 4. Service registry (on BOTH chains: the catalog is multi-chain).
   const registry = await deployOnce("ServiceRegistry", "ServiceRegistry", []);
+
+  // ---------------- REMOTE-CHAIN STACK ----------------
+  // A settlement counterparty: no DAO, no staking, no agent wallets. Those live
+  // on the home chain, which is where every policy check runs.
+  if (cfg.role === "remote") {
+    const remotePolicy = await deployOnce(
+      "RemotePolicyParameters",
+      "RemotePolicyParameters",
+      [
+        deployer.address,
+        cfg.policy.maxPerTxUsd,
+        cfg.policy.defaultDailyBudgetUsd,
+        cfg.policy.slashBps,
+        cfg.policy.disputeWindow,
+        deployer.address, // treasury
+        cfg.policy.providerMinStake,
+      ],
+    );
+
+    const remoteEscrow = await deployOnce("SettlementEscrow", "SettlementEscrow", [
+      token,
+      remotePolicy,
+      deployer.address,
+    ]);
+
+    if (!cfg.external.ccipRouter) {
+      throw new Error(`${cfg.label} is a remote chain but has no CCIP router configured.`);
+    }
+    const remoteRouter = await deployOnce(
+      "CrossChainSpendRouter",
+      "CrossChainSpendRouter",
+      [token, cfg.external.ccipRouter, remoteEscrow, deployer.address],
+    );
+
+    // No factory here, so an explicit allowlist vouches for the router as the
+    // escrow's only authorized payer.
+    const allow = await deployOnce("AllowlistAuthorizer", "AllowlistAuthorizer", [
+      deployer.address,
+    ]);
+    const allowC = await ethers.getContractAt("AllowlistAuthorizer", allow);
+    if (!(await allowC.isWallet(remoteRouter))) {
+      await (await allowC.setAuthorized(remoteRouter, true)).wait();
+      console.log("~ AllowlistAuthorizer: authorized the router as escrow payer");
+    }
+    await setAuthorizerOnce("SettlementEscrow", remoteEscrow, allow);
+
+    console.log(`\nSaved deployments/${network.name}.json`);
+    printSummary(data);
+    console.log(
+      "\nNext: deploy the home chain, then run scripts/deploy/wire-lane.ts on BOTH networks.",
+    );
+    return;
+  }
+
+  // ---------------- HOME-CHAIN STACK ----------------
 
   // 5. Timelock (deployer is temporary admin; proposer/executor granted below).
   const timelock = await deployOnce("TimelockController", "TimelockController", [
@@ -110,49 +175,72 @@ async function main() {
     deployer.address,
   ]);
 
-  // 8+9. Escrow and factory are mutually dependent (escrow needs the factory as
-  // its wallet-authorizer; the factory needs the escrow). Deploy them as a pair,
-  // predicting the factory's CREATE address so the escrow can reference it.
-  let escrow = existing(data, "SettlementEscrow");
-  let factory = existing(data, "AgentWalletFactory");
-  if (!escrow || !factory) {
-    const nonce = await ethers.provider.getTransactionCount(deployer.address);
-    const predictedFactory = ethers.getCreateAddress({
-      from: deployer.address,
-      nonce: nonce + 1, // escrow at `nonce`, factory at `nonce + 1`
-    });
-    escrow = await deployOnce("SettlementEscrow", "SettlementEscrow", [
+  // 8. Escrow. Owned by the deployer just long enough to set its authorizer
+  //    (a one-time initializer); it exposes no live admin lever afterwards.
+  const escrow = await deployOnce("SettlementEscrow", "SettlementEscrow", [
+    token,
+    governor,
+    deployer.address,
+  ]);
+
+  // 9. Cross-chain router (M6). Only deployed where a CCIP router exists; on a
+  //    chain without one, wallets are created with cross-chain disabled.
+  let router = ethers.ZeroAddress;
+  if (cfg.external.ccipRouter) {
+    router = await deployOnce("CrossChainSpendRouter", "CrossChainSpendRouter", [
       token,
-      governor,
-      predictedFactory,
-      timelock, // owner = timelock (reserved admin role)
-    ]);
-    factory = await deployOnce("AgentWalletFactory", "AgentWalletFactory", [
-      token,
-      governor,
-      priceFeed,
-      registry,
-      staking,
+      cfg.external.ccipRouter,
       escrow,
-      cfg.external.chainSelector,
+      deployer.address,
     ]);
-    if (factory.toLowerCase() !== predictedFactory.toLowerCase()) {
-      throw new Error(
-        `Factory address mismatch: predicted ${predictedFactory}, got ${factory}. ` +
-          `Clear deployments/${network.name}.json and redeploy escrow+factory together.`,
-      );
-    }
   } else {
-    console.log(`= SettlementEscrow (reused) ${escrow}`);
-    console.log(`= AgentWalletFactory (reused) ${factory}`);
+    console.log("= CrossChainSpendRouter (skipped: no CCIP router on this network)");
   }
 
+  // 10. Factory. Escrow<->factory and router<->factory are mutually dependent;
+  //     the one-time setAuthorizer on each breaks both cycles, so deployment is a
+  //     straight line with no CREATE-address prediction.
+  const factory = await deployOnce("AgentWalletFactory", "AgentWalletFactory", [
+    token,
+    governor,
+    priceFeed,
+    registry,
+    staking,
+    escrow,
+    cfg.external.chainSelector,
+    router,
+  ]);
+
   // --- Wiring (idempotent) ---
+  await setAuthorizerOnce("SettlementEscrow", escrow, factory);
+  if (router !== ethers.ZeroAddress) {
+    await setAuthorizerOnce("CrossChainSpendRouter", router, factory);
+  }
   await wireTimelock(timelock, governor, deployer.address);
   await handStakingToTimelock(staking, timelock);
 
   console.log(`\nSaved deployments/${network.name}.json`);
   printSummary(data);
+}
+
+/// Set a one-time authorizer if it is not already set (keeps re-runs idempotent).
+async function setAuthorizerOnce(
+  label: string,
+  target: string,
+  authorizer: string,
+) {
+  // Both SettlementEscrow and CrossChainSpendRouter expose the same shape.
+  const c = await ethers.getContractAt("SettlementEscrow", target);
+  const current = await c.authorizer();
+  if (current === ethers.ZeroAddress) {
+    await (await c.setAuthorizer(authorizer)).wait();
+    console.log(`~ ${label}.setAuthorizer(factory)`);
+  } else if (current.toLowerCase() !== authorizer.toLowerCase()) {
+    throw new Error(
+      `${label} authorizer is ${current}, expected ${authorizer}. ` +
+        `It is set once and immutable — redeploy ${label} to change it.`,
+    );
+  }
 }
 
 async function wireTimelock(

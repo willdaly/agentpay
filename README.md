@@ -14,7 +14,7 @@ control plane — this is that control plane.**
 
 ## Status
 
-Milestones **M1–M4** complete:
+Milestones **M1–M6** complete:
 - **M1 Foundation:** repo + CI scaffold, `AgentPayToken`, `PriceFeedAdapter`
   (live-oracle USD↔APT with staleness/sanity guards), `ServiceRegistry`.
 - **M2 The product:** `AgentWallet` + `AgentWalletFactory` enforcing the full spend
@@ -30,8 +30,15 @@ Milestones **M1–M4** complete:
   (`scripts/deploy/`) that write `deployments/<network>.json`, wire the timelock
   roles, and hand staking ownership to the DAO; plus an end-to-end demo
   (`scripts/demo/spend.ts`). Validated green against a local Hardhat node.
+- **M6 Cross-chain:** `CrossChainSpendRouter` — CCIP sender + receiver over the
+  verified **Sepolia → Base Sepolia** lane, with source-chain/sender allowlists and
+  native-ETH fees. Every policy check runs on the home chain *before* a message is
+  sent (the cross-chain suite asserts zero messages on every rejection path).
+  Value settles via **data-only messaging + lock-and-credit** — a deliberately
+  trusted bridge whose assumptions are documented in full in
+  [docs/SECURITY_NOTES.md](docs/SECURITY_NOTES.md#cross-chain-notes-m6--read-this-section-before-auditing-the-bridge).
 
-**132 tests, 100% line / ~96% branch coverage** on product contracts. See the
+**177 tests, ~99.7% line / ~94.9% branch coverage** on 18 product contracts. See the
 [milestone plan](CAPSTONE_BUILD_BRIEF.md#9-milestone-order-each-ends-green-tests-pass-coverage-holds-committed).
 
 ## Architecture
@@ -86,8 +93,9 @@ key** funded only with testnet ETH/LINK; private keys are never logged or commit
 
 ## Deployed addresses
 
-See [docs/addresses.md](docs/addresses.md) (populated at the M5/M6 deploy milestones,
-with explorer links and deploy tx hashes per chain).
+See [docs/addresses.md](docs/addresses.md) for the deploy + cross-chain lane
+runbooks, verified external addresses (feeds, CCIP routers, chain selectors), and
+the address tables populated from the live testnet deploy.
 
 ## Mapping to the six graded components
 
@@ -105,7 +113,8 @@ with explorer links and deploy tx hashes per chain).
 | Dependency | Version | License | Use |
 |---|---|---|---|
 | [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts) | 5.x | MIT | ERC-20 / Votes / Permit, Governor stack, access control |
-| [Chainlink Contracts](https://github.com/smartcontractkit/chainlink) | 1.5.x | MIT | `AggregatorV3Interface` price feeds, CCIP, mock aggregator |
+| [Chainlink Contracts](https://github.com/smartcontractkit/chainlink) | 1.5.x | MIT | `AggregatorV3Interface` price feeds, mock aggregator |
+| [Chainlink CCIP Contracts](https://github.com/smartcontractkit/chainlink-ccip) | 2.0.x | MIT | `Client` message structs, `IRouterClient`, `IAny2EVMMessageReceiver` |
 | [Hardhat](https://hardhat.org) + toolbox | 2.x | MIT | Build, test, coverage, TypeChain, gas reporter |
 
 AI assistance is disclosed in [docs/AI_DISCLOSURE.md](docs/AI_DISCLOSURE.md).

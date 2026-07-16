@@ -39,6 +39,7 @@ describe("AgentWalletFactory", () => {
       await staking.getAddress(),
       await escrow.getAddress(),
       LOCAL_SELECTOR,
+      ethers.ZeroAddress, // no cross-chain router in this suite
     );
 
     return { factory, token, policy, priceFeed, registry, staking, escrow, deployer, owner, agent, other };
@@ -107,6 +108,7 @@ describe("AgentWalletFactory", () => {
         Factory.deploy(
           deps[0], deps[1], deps[2], deps[3], deps[4], deps[5],
           LOCAL_SELECTOR,
+          ethers.ZeroAddress,
         ),
       ).to.be.revertedWithCustomError(Factory, "ZeroAddress");
     });

@@ -61,6 +61,7 @@ describe("AgentWallet", () => {
       await staking.getAddress(),
       await escrow.getAddress(),
       LOCAL_SELECTOR,
+      ethers.ZeroAddress, // no cross-chain router in this suite
     );
     const tx = await factory.createWallet(owner.address, agent.address);
     const rcpt = await tx.wait();
@@ -452,6 +453,27 @@ describe("AgentWallet", () => {
     });
   });
 
+  describe("previewSpend (pre-flight policy check)", () => {
+    it("returns the decision for a spend that would succeed, without spending", async () => {
+      const f = await loadFixture(deploy);
+      const ctx = await f.wallet.connect(f.agent).previewSpend.staticCall(1n);
+      expect(ctx.provider).to.equal(f.provider.address);
+      expect(ctx.isRemote).to.equal(false);
+      expect(ctx.usdValue).to.equal(usd(0.05)); // the fixture service is $0.05
+      expect(ctx.tokenAmount).to.equal(ethers.parseEther("0.05")); // APT = $1
+      // Nothing moved: it is a view.
+      expect(await f.wallet.spentTodayUsd()).to.equal(0n);
+    });
+
+    it("reverts with the same typed error a real spend would", async () => {
+      const f = await loadFixture(deploy);
+      await f.wallet.connect(f.owner).setServiceAllowed(1n, false);
+      await expect(f.wallet.connect(f.agent).previewSpend(1n))
+        .to.be.revertedWithCustomError(f.wallet, "CounterpartyNotAllowed")
+        .withArgs(1n);
+    });
+  });
+
   describe("constructor guards", () => {
     // Each of the six dependencies must be individually guarded against zero.
     const depNames = ["token", "policy", "priceFeed", "registry", "staking", "escrow"];
@@ -474,6 +496,7 @@ describe("AgentWallet", () => {
             f.agent.address,
             deps[0], deps[1], deps[2], deps[3], deps[4], deps[5],
             LOCAL_SELECTOR,
+            ethers.ZeroAddress,
           ),
         ).to.be.revertedWithCustomError(Wallet, "ZeroAddress");
       });

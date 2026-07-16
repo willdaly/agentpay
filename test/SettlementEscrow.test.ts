@@ -26,9 +26,9 @@ describe("SettlementEscrow", () => {
     const escrow = await Escrow.deploy(
       await token.getAddress(),
       await policy.getAddress(),
-      await authorizer.getAddress(),
       owner.address,
     );
+    await escrow.connect(owner).setAuthorizer(await authorizer.getAddress());
 
     // The "wallet" is funded; it transfers to escrow then credits (as AgentWallet does).
     await token.transfer(walletSigner.address, apt("1000"));
@@ -78,19 +78,18 @@ describe("SettlementEscrow", () => {
       ).to.be.revertedWithCustomError(f.escrow, "ZeroAmount");
     });
 
-    const depNames = ["token", "policy", "authorizer"];
+    const depNames = ["token", "policy"];
     depNames.forEach((name, depIndex) => {
       it(`reverts constructor when ${name} is zero`, async () => {
         const f = await loadFixture(deployImmediate);
         const deps = [
           await f.token.getAddress(),
           await f.policy.getAddress(),
-          await f.authorizer.getAddress(),
         ];
         deps[depIndex] = ethers.ZeroAddress;
         const Escrow = await ethers.getContractFactory("SettlementEscrow");
         await expect(
-          Escrow.deploy(deps[0], deps[1], deps[2], f.owner.address),
+          Escrow.deploy(deps[0], deps[1], f.owner.address),
         ).to.be.revertedWithCustomError(Escrow, "ZeroAddress");
       });
     });
@@ -221,9 +220,9 @@ describe("SettlementEscrow", () => {
       const escrow = await Escrow.deploy(
         await token.getAddress(),
         await policy.getAddress(),
-        await authorizer.getAddress(),
         owner.address,
       );
+      await escrow.connect(owner).setAuthorizer(await authorizer.getAddress());
 
       const Attacker = await ethers.getContractFactory("ReentrantAttacker");
       const attacker = await Attacker.deploy(await escrow.getAddress());

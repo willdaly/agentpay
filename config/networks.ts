@@ -19,6 +19,12 @@ export interface ExternalAddresses {
 export interface DeployConfig {
   /** Human label for logs. */
   label: string;
+  /**
+   * "home"   — hosts agent wallets, governance, staking (Sepolia).
+   * "remote" — settlement-only counterparty: token, registry, escrow, router,
+   *            and a mirrored parameter store. No DAO, no wallets (Base Sepolia).
+   */
+  role: "home" | "remote";
   external: ExternalAddresses;
 
   /** Fixed APT supply minted to the deployer at construction (wei). */
@@ -77,6 +83,7 @@ export const CONFIGS: Record<string, DeployConfig> = {
   // Local Hardhat / localhost: no real feed => the deploy script deploys a mock.
   hardhat: {
     label: "Hardhat (local)",
+    role: "home",
     external: { chainSelector: 16015286601757825753n },
     initialSupply: APT(10_000_000),
     aptPerEth: 3000n,
@@ -87,6 +94,7 @@ export const CONFIGS: Record<string, DeployConfig> = {
   },
   localhost: {
     label: "Hardhat (localhost node)",
+    role: "home",
     external: { chainSelector: 16015286601757825753n },
     initialSupply: APT(10_000_000),
     aptPerEth: 3000n,
@@ -97,10 +105,14 @@ export const CONFIGS: Record<string, DeployConfig> = {
   },
   sepolia: {
     label: "Ethereum Sepolia",
+    role: "home",
     external: {
       // Verified: Chainlink Sepolia ETH/USD proxy (8 decimals, 3600s heartbeat).
       ethUsdFeed: "0x694AA1769357215DE4FAC081bf1f309aDC325306",
-      chainSelector: 16015286601757825753n, // CCIP Sepolia selector (re-verify at M6)
+      // Verified from the CCIP directory (testnet, ethereum-testnet-sepolia).
+      ccipRouter: "0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59",
+      linkToken: "0x779877A7B0D9E8603169DdbD7836e478b4624789",
+      chainSelector: 16015286601757825753n,
     },
     initialSupply: APT(10_000_000),
     aptPerEth: 3000n,
@@ -111,10 +123,15 @@ export const CONFIGS: Record<string, DeployConfig> = {
   },
   baseSepolia: {
     label: "Base Sepolia",
+    role: "remote",
     external: {
-      // Base Sepolia ETH/USD (re-verify from docs before the M6 deploy).
+      // Base Sepolia ETH/USD (re-verify from the Chainlink feed directory before
+      // relying on it; the M6 cross-chain path does not depend on this feed).
       ethUsdFeed: "0x4aDC67696bA383F43DD60A9e78F2C97FbbFc7cb1",
-      chainSelector: 10344971235874465080n, // CCIP Base Sepolia selector (re-verify at M6)
+      // Verified from the CCIP directory (testnet, Base Sepolia).
+      ccipRouter: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93",
+      linkToken: "0xE4aB69C077896252FAFBD49EFD26B5D171A32410",
+      chainSelector: 10344971235874465080n,
     },
     initialSupply: APT(10_000_000),
     aptPerEth: 3000n,

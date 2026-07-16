@@ -209,4 +209,69 @@ and licenses in the README.
 
 ---
 
-_Add one section per milestone (M6–M8) as the project progresses._
+### M6 — Cross-chain (CCIP Sepolia → Base Sepolia)
+
+**Date:** 2026-07-16
+
+**Verified from official docs (not memory), at build time:**
+- CCIP directory (testnet): Sepolia router `0x0BF3…3A59`, selector
+  `16015286601757825753`, LINK `0x7798…4789`; Base Sepolia router `0xD3b0…8a93`,
+  selector `10344971235874465080`, LINK `0xE4aB…2410`. **Sepolia → Base Sepolia
+  confirmed as a live lane.**
+- CCIP contracts live in a separate package (`@chainlink/contracts-ccip@2.0.0`),
+  not `@chainlink/contracts`. Installed and pragma-checked against solc 0.8.24.
+
+**AI-generated (Claude Code):**
+- `CrossChainSpendRouter.sol` — CCIP sender + receiver in one contract:
+  `routeSpend` (authorizer-gated), `ccipReceive` (router-only + source-chain and
+  sender allowlists), native-ETH fee handling, liquidity/native rescue.
+- `AllowlistAuthorizer.sol`, `RemotePolicyParameters.sol` — remote-chain support.
+- `ICrossChainSpendRouter.sol`; `AgentWallet` remote-spend routing; factory passes
+  the router through.
+- `mocks/MockCCIPRouter.sol` — captures and replays CCIP messages.
+- Tests: `CrossChainSpendRouter.test.ts` (23), `RemoteChainSupport.test.ts`,
+  `integration/CrossChain.integration.test.ts` (12, two simulated chains).
+- `scripts/deploy/deploy.ts` role branching (home/remote); `scripts/deploy/wire-lane.ts`.
+- SECURITY_NOTES cross-chain section; addresses.md lane runbook.
+
+**Engineering decisions worth disclosing:**
+- **Data-only messaging + lock-and-credit**, not CCIP token transfer: APT is not a
+  CCIP-registered token (CCT), so CCIP moves the *message* and value is settled
+  against pre-funded remote liquidity. This is the brief's sanctioned fallback; the
+  trust assumptions are documented in full in `SECURITY_NOTES.md` rather than
+  glossed. **This is a trusted bridge and is presented as one.**
+- **Native ETH for CCIP fees** (`feeToken = address(0)`) over LINK — one less token
+  to fund and approve. The brief delegated this choice explicitly.
+- **Chainlink's `CCIPReceiver` base class is unusable under Hardhat** (it imports
+  `@openzeppelin/contracts@5.3.0/...`, a Foundry-style pinned path npm cannot
+  resolve). Verified by probe-compiling. Worked around by implementing
+  `IAny2EVMMessageReceiver` directly with an explicit `onlyRouter` check, while
+  still using Chainlink's canonical `Client` structs and `IRouterClient` so
+  real-router interop stays exact.
+- **MockCCIPRouter over Chainlink Local** — the brief permits either; the mock keeps
+  CCIP tests deterministic and dependency-light while exercising the real interfaces.
+- **`SettlementEscrow` authorizer refactored to a one-time setter.** M6 added a
+  third contract to the escrow↔factory dependency cycle, which CREATE-address
+  prediction handled poorly. The one-time initializer makes deployment a straight
+  line, removes prediction from both scripts and tests, and gives the previously
+  vestigial escrow `owner` exactly one narrow job (closing an open Slither triage note).
+- **`AgentWallet.spend` hit "stack too deep"** once the router was added. Rather than
+  enabling `viaIR` (slower compiles, coverage friction), the CHECKS were extracted
+  into a `view` `_authorizeSpend` returning a memory `SpendContext`. This fixed the
+  stack, sharpened the CEI structure, and yielded a free `previewSpend` pre-flight
+  view the M7 agent CLI can use.
+
+**Verified by running:** 177 tests passing; coverage gate PASS (99.71% lines,
+94.88% branches across 18 product contracts); deploy + demo re-validated green and
+idempotent on a local node. The cross-chain suite proves every home-chain rejection
+path sends **zero** CCIP messages.
+
+**Not done here (honest scope):** the live Sepolia↔Base Sepolia deploy needs funded
+throwaway keys on both chains; scripts and runbook are ready and the flow is proven
+against simulated chains.
+
+**Hand-modified:** _(record any direct edits here as they happen)_
+
+---
+
+_Add one section per milestone (M7–M8) as the project progresses._
