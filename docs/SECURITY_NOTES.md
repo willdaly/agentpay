@@ -41,6 +41,22 @@ Findings are triaged here.
 |----|------|----------|----------|---------|--------|------------------------|
 | — | — | — | — | _No findings triaged yet (first Slither pass pending in CI)._ | — | — |
 
+## Governance & access-control notes (M4)
+
+- **Live parameter store.** `PolicyGovernor` implements `IPolicyParameters`; every
+  setter is `onlyGovernance`, so parameters change only via a passed proposal
+  executed by the timelock. Consumers read values live at tx time — no stale-cache
+  window, no redeploy. Verified by the signature governance integration test.
+- **Slashing is DAO-only.** `ProviderStaking` ownership is transferred to the
+  timelock, so `slash` is reachable only through governance execution.
+- **`globalPause` goes through governance/timelock.** This matches the graded demo
+  but means the emergency stop inherits the timelock delay. FUTURE WORK: add a
+  fast-path guardian role that can pause instantly (unpause still via governance).
+  For the testnet demo the timelock delay is configured short.
+- **`SettlementEscrow` owner is currently unused** (no `onlyOwner` function yet).
+  It is reserved for a future admin/rescue path; flagged so Slither's
+  "owner-never-used" note is expected and triaged, not a surprise.
+
 ## Known assumptions / accepted limitations (testnet demo)
 
 - **`AgentPayToken.faucet()`** breaks the fixed-supply invariant and is a deliberate

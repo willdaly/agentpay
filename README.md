@@ -14,7 +14,7 @@ control plane — this is that control plane.**
 
 ## Status
 
-Milestones **M1–M3** complete:
+Milestones **M1–M4** complete:
 - **M1 Foundation:** repo + CI scaffold, `AgentPayToken`, `PriceFeedAdapter`
   (live-oracle USD↔APT with staleness/sanity guards), `ServiceRegistry`.
 - **M2 The product:** `AgentWallet` + `AgentWalletFactory` enforcing the full spend
@@ -23,8 +23,11 @@ Milestones **M1–M3** complete:
 - **M3 Economics:** `ProviderStaking` (cooldown unstake, governance slashing to
   treasury) and `SettlementEscrow` (pull-over-push, optional dispute-window release,
   reentrancy-safe).
+- **M4 Governance:** `PolicyGovernor` — an OpenZeppelin Governor + Timelock that is
+  *also* the live `IPolicyParameters` store. A passed proposal changes system-wide
+  behavior with **no redeploy** (asserted by the signature governance test).
 
-**122 tests, 100% line / ~97% branch coverage** on product contracts. See the
+**132 tests, 100% line / ~96% branch coverage** on product contracts. See the
 [milestone plan](CAPSTONE_BUILD_BRIEF.md#9-milestone-order-each-ends-green-tests-pass-coverage-holds-committed).
 
 ## Architecture

@@ -130,4 +130,43 @@ and licenses in the README.
 
 ---
 
-_Add one section per milestone (M4–M8) as the project progresses._
+### M4 — Governance (`PolicyGovernor` as the live parameter store)
+
+**Date:** 2026-07-16
+
+**AI-generated (Claude Code):**
+- `PolicyGovernor.sol`: an OpenZeppelin Governor (Settings + CountingSimple +
+  Votes + VotesQuorumFraction + TimelockControl) that ALSO implements
+  `IPolicyParameters`. The seven risk parameters live in its storage; each setter
+  is `onlyGovernance`, so it is callable only by the timelock executing a passed
+  proposal. Constructor validates `slashBps <= 10000` and non-zero treasury.
+- `PolicyGovernor.test.ts` (initial values, Governor settings, constructor
+  validation, every setter rejects a direct non-governance call).
+- `integration/Governance.integration.test.ts` — the SIGNATURE test and more:
+  propose → vote → queue → timelock delay → execute, asserting the SAME
+  `AgentWallet.spend()` that failed a cap check now succeeds with NO redeploy;
+  global pause/unpause via governance; every risk parameter mutated in one
+  multi-action proposal; proposal cancellation; and DAO-only provider slashing
+  (staking owned by the timelock).
+
+**Design decisions (from the brief) applied by AI:**
+- `PolicyGovernor` is simultaneously the DAO and the parameter store, exactly per
+  the brief's "critical inherited pattern": consumers read `IPolicyParameters`
+  live at tx time, so a passed proposal changes behavior with no redeploy.
+- `ProviderStaking` ownership is transferred to the timelock in the governance
+  integration so slashing is possible only via a passed proposal.
+
+**Notes / accepted limitations:**
+- `globalPause` is set via governance (through the timelock), matching the brief's
+  demo. A production system would add a fast-path guardian role for instant
+  emergency pause (unpause still via governance); noted as future work in
+  `SECURITY_NOTES.md`. For the demo the timelock delay is set short.
+- 7 uncovered branches remain, all `nonReentrant` guard revert-paths across the
+  economics contracts (not reachable without a per-function reentrancy attack);
+  100% lines / functions on product contracts.
+
+**Hand-modified:** _(record any direct edits here as they happen)_
+
+---
+
+_Add one section per milestone (M5–M8) as the project progresses._
