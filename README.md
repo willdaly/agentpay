@@ -26,6 +26,10 @@ Milestones **M1–M4** complete:
 - **M4 Governance:** `PolicyGovernor` — an OpenZeppelin Governor + Timelock that is
   *also* the live `IPolicyParameters` store. A passed proposal changes system-wide
   behavior with **no redeploy** (asserted by the signature governance test).
+- **M5 Single-chain deploy:** idempotent, network-aware deploy scripts
+  (`scripts/deploy/`) that write `deployments/<network>.json`, wire the timelock
+  roles, and hand staking ownership to the DAO; plus an end-to-end demo
+  (`scripts/demo/spend.ts`). Validated green against a local Hardhat node.
 
 **132 tests, 100% line / ~96% branch coverage** on product contracts. See the
 [milestone plan](CAPSTONE_BUILD_BRIEF.md#9-milestone-order-each-ends-green-tests-pass-coverage-holds-committed).

@@ -169,4 +169,44 @@ and licenses in the README.
 
 ---
 
-_Add one section per milestone (M5–M8) as the project progresses._
+### M5 — Single-chain deploy (idempotent scripts + local validation)
+
+**Date:** 2026-07-16
+
+**AI-generated (Claude Code):**
+- `config/networks.ts`: per-network deploy config. External addresses verified
+  from official docs — Sepolia ETH/USD feed
+  `0x694AA1769357215DE4FAC081bf1f309aDC325306` (8 dp, 3600s heartbeat) from
+  Chainlink's reference data directory.
+- `scripts/util/deployments.ts`: read/write helper for `deployments/<network>.json`
+  (gitignored machine record), BigInt-safe serialization, crash-resumable.
+- `scripts/deploy/deploy.ts`: idempotent full-stack deploy (token → feed/mock →
+  adapter → registry → timelock → governor → staking → escrow+factory), wires
+  timelock roles, hands `ProviderStaking` ownership to the timelock. Deploys a
+  mock ETH/USD feed automatically on local networks, uses the real feed on Sepolia.
+- `scripts/demo/spend.ts`: end-to-end demo — register service, stake, create
+  wallet, fund, allowlist + $5/day budget, spend, settle (provider withdraws),
+  and reconstruct the spend from `SpendExecuted` logs (`audit`).
+- `docs/addresses.md` runbook; README + AI_DISCLOSURE updates.
+
+**Verified by running (not just asserting):**
+- Full deploy + demo-spend validated GREEN against a local Hardhat node:
+  register → stake 100 APT → wallet → fund → spend $0.50 (0.5 APT at the
+  live-oracle price) → provider withdraws → audit reconstructs from logs.
+- Deploy re-run confirmed idempotent (all contracts reused, no duplicate wiring).
+
+**Design decisions / notes:**
+- The escrow↔factory constructor cycle is broken in the deploy script the same
+  way as in tests: predict the factory's CREATE address so the escrow can
+  reference it (deployed as a consecutive-nonce pair).
+- The deployer keeps the timelock admin role on testnet for recoverability; a
+  production deploy would renounce it (see `SECURITY_NOTES.md`).
+- **The live Sepolia deploy itself is the student's to run** (needs a funded
+  throwaway key + RPC in `.env`); the scripts and runbook make it a one-command
+  operation, and the flow is proven locally.
+
+**Hand-modified:** _(record any direct edits here as they happen)_
+
+---
+
+_Add one section per milestone (M6–M8) as the project progresses._
