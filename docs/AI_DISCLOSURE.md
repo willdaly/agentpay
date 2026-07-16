@@ -274,4 +274,69 @@ against simulated chains.
 
 ---
 
-_Add one section per milestone (M7–M8) as the project progresses._
+### M7 — Agent client, provider-sim, ScoreRegistry, full demo
+
+**Date:** 2026-07-16
+
+**AI-generated (Claude Code):**
+- `ScoreRegistry.sol` — commit-reveal provider scoring (lineage: the midterm's
+  `EvaluationRegistry`). Commitment binds round + score + salt + rater, so it
+  can't be replayed across rounds or lifted by another address. + 21 tests.
+- `agent/` — a separate npm package: `config` / `chain` / `catalog` / `decide`
+  and the `quote` / `spend` / `audit` commands. Reads ABIs from `../artifacts`
+  and addresses from `../deployments`, so there is exactly one source of truth
+  for both and no hand-copied ABIs to drift.
+- `agent/provider-sim/server.ts` — verifies on-chain payment (escrow credit +
+  provider + serviceId + amount) and enforces one-payment-one-delivery before
+  serving.
+- `scripts/demo/full-demo.ts` — all seven steps of brief §10.
+- `agent/README.md`; README + AI_DISCLOSURE updates.
+
+**Anthropic API usage (per the `claude-api` skill, loaded before writing the code):**
+- Model `claude-opus-4-8`; structured outputs via `messages.parse()` +
+  `zodOutputFormat`; adaptive thinking at `effort: "low"` (a scoped selection
+  task — keeps the CLI responsive). `stop_reason: "refusal"` is handled.
+
+**Design decisions worth disclosing:**
+- **Three defensive layers, not one.** The brief asks for defensive parsing
+  (strip fences, validate schema, clamp prices). Structured outputs make schema
+  violations nearly impossible, but they cannot stop *semantic* nonsense — a
+  hallucinated serviceId or an absurd price. So: structured outputs for the wire
+  format, a fence-stripping text parser as fallback, and semantic validation
+  against the real catalog.
+- **An over-budget decision is deliberately NOT clamped.** Repairing it would
+  hide precisely the failure the platform exists to catch. It is flagged and
+  allowed through to the chain, where the typed revert demonstrates the control
+  plane. Only structurally unusable decisions (unknown serviceId) fail early.
+- **Deterministic fallback without an API key**, clearly labelled `(heuristic)`
+  in output — so the demo and CI run with no key, without ever pretending a
+  heuristic was an LLM.
+- **provider-sim marks a payment redeemed BEFORE serving**, so an inference that
+  fails can't hand the caller a free retry of a spent payment.
+- ScoreRegistry is informational; having `AgentWallet` enforce a minimum score is
+  left as future work (it needs a governance parameter and a liveness story for
+  new providers with no ratings).
+
+**Verified by running (not just asserting):**
+- Full §10 demo GREEN end-to-end on a local node — all 7 steps, driving the real
+  CLI via `execFileSync` rather than reimplementing it, so a broken CLI fails the
+  demo loudly.
+- **The centerpiece is real:** the identical `agent spend 3` command returns
+  `ExceedsPerTxCap` before the proposal and `SPEND ALLOWED` after — no redeploy.
+  The two spends' `policySnapshot` hashes differ, capturing the policy change.
+- provider-sim rejections verified by curl: replayed payment → 409; forged
+  txHash → 402 "transaction not found".
+- 198 tests passing; coverage gate PASS (100% lines, 95.52% branches over 19
+  product contracts); 0 lint errors.
+
+**Bug found and fixed by running it:** the CLI initially signed as local account
+0 while the demo's wallet authorized account 3 as its agent operator, so the
+first run hit `NotAuthorizedAgent` — the role split working correctly. Fixed by
+recording the operator in the agent context and signing as that address locally,
+rather than collapsing owner and agent onto one key to make the demo pass.
+
+**Hand-modified:** _(record any direct edits here as they happen)_
+
+---
+
+_Add the M8 section as the project progresses._

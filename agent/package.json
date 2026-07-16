@@ -1,0 +1,27 @@
+{
+  "name": "@agentpay/agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentPay off-chain agent CLI — the LLM proposes, the contract disposes.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "agent": "./bin/agent"
+  },
+  "scripts": {
+    "agent": "tsx src/cli.ts",
+    "provider-sim": "tsx provider-sim/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "dotenv": "^17.4.2",
+    "ethers": "^6.17.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.5.0"
+  }
+}

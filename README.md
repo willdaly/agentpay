@@ -14,7 +14,7 @@ control plane — this is that control plane.**
 
 ## Status
 
-Milestones **M1–M6** complete:
+Milestones **M1–M7** complete:
 - **M1 Foundation:** repo + CI scaffold, `AgentPayToken`, `PriceFeedAdapter`
   (live-oracle USD↔APT with staleness/sanity guards), `ServiceRegistry`.
 - **M2 The product:** `AgentWallet` + `AgentWalletFactory` enforcing the full spend
@@ -37,8 +37,14 @@ Milestones **M1–M6** complete:
   Value settles via **data-only messaging + lock-and-credit** — a deliberately
   trusted bridge whose assumptions are documented in full in
   [docs/SECURITY_NOTES.md](docs/SECURITY_NOTES.md#cross-chain-notes-m6--read-this-section-before-auditing-the-bridge).
+- **M7 Agent + demo:** the [`agent/`](agent/) CLI (`quote` / `spend` / `audit`) —
+  Claude picks a service from the live multi-chain catalog, on-chain policy rules
+  on it, and the history is rebuilt from events with no indexer. Plus
+  `provider-sim` (verifies payment on-chain, one-payment-one-delivery),
+  `ScoreRegistry` (commit-reveal scoring), and a scripted
+  [full demo](scripts/demo/full-demo.ts) covering all seven steps of the brief.
 
-**177 tests, ~99.7% line / ~94.9% branch coverage** on 18 product contracts. See the
+**198 tests, 100% line / ~95.5% branch coverage** on 19 product contracts. See the
 [milestone plan](CAPSTONE_BUILD_BRIEF.md#9-milestone-order-each-ends-green-tests-pass-coverage-holds-committed).
 
 ## Architecture
@@ -104,9 +110,9 @@ the address tables populated from the live testnet deploy.
 | Multi-chain marketplace + cross-chain workflow | `ServiceRegistry` on both chains; `CrossChainSpendRouter` CCIP payment Sepolia → Base Sepolia |
 | Tokenomics + staking + governance | `AgentPayToken`, `ProviderStaking` (+ slashing), `PolicyGovernor` full proposal lifecycle |
 | Oracle integration affecting on-chain behavior | `PriceFeedAdapter`: USD caps enforced at spend time via the live ETH/USD feed |
-| Privacy features for enterprise compliance | `ScoreRegistry` commit-reveal; audit-trail design (events + policy-snapshot hashes) enabling selective disclosure; access-controlled agent wallets |
+| Privacy features for enterprise compliance | `ScoreRegistry` commit-reveal (scores hidden during commit; selective disclosure via salt); audit trail of events + policy-snapshot hashes; owner/agent role-split wallets |
 | Security audit preparation | Slither in CI, `docs/SECURITY_NOTES.md` findings log, per-finding mitigations, final audit report |
-| DevOps pipeline + monitoring | GitHub Actions (build, lint, test, coverage gate, Slither); `agent audit` event-log monitoring; gas reporter |
+| DevOps pipeline + monitoring | GitHub Actions (build, lint, test, coverage gate, Slither); `agent audit` rebuilds spend history from logs alone; gas reporter |
 
 ## Dependencies & attribution
 

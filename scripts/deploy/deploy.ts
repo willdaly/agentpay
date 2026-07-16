@@ -87,6 +87,9 @@ async function main() {
   // 4. Service registry (on BOTH chains: the catalog is multi-chain).
   const registry = await deployOnce("ServiceRegistry", "ServiceRegistry", []);
 
+  // 4b. Commit-reveal provider scoring (informational; surfaced by the agent CLI).
+  await deployOnce("ScoreRegistry", "ScoreRegistry", []);
+
   // ---------------- REMOTE-CHAIN STACK ----------------
   // A settlement counterparty: no DAO, no staking, no agent wallets. Those live
   // on the home chain, which is where every policy check runs.
