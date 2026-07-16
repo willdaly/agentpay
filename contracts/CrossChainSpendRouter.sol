@@ -14,6 +14,7 @@ import {IAny2EVMMessageReceiver} from
 
 import {ISettlementEscrow} from "./interfaces/ISettlementEscrow.sol";
 import {IWalletAuthorizer} from "./interfaces/IWalletAuthorizer.sol";
+import {ICrossChainSpendRouter} from "./interfaces/ICrossChainSpendRouter.sol";
 
 /// @title CrossChainSpendRouter
 /// @notice Carries an agent's spend from the home chain (Sepolia) to a provider
@@ -58,7 +59,12 @@ import {IWalletAuthorizer} from "./interfaces/IWalletAuthorizer.sol";
 /// @dev CCIP FEES are paid in NATIVE ETH (`feeToken = address(0)`), chosen over
 ///      LINK because it removes a funding-and-approval step. This router must hold
 ///      an ETH balance; top it up with {fundNative} (or a plain transfer).
-contract CrossChainSpendRouter is IAny2EVMMessageReceiver, Ownable, ReentrancyGuard {
+contract CrossChainSpendRouter is
+    ICrossChainSpendRouter,
+    IAny2EVMMessageReceiver,
+    Ownable,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
 
     /// @notice Payload carried across the lane. Data-only: no CCIP token transfer.
@@ -179,7 +185,7 @@ contract CrossChainSpendRouter is IAny2EVMMessageReceiver, Ownable, ReentrancyGu
         uint256 serviceId,
         uint256 amount,
         uint256 usdValue
-    ) external nonReentrant returns (bytes32 messageId) {
+    ) external override nonReentrant returns (bytes32 messageId) {
         IWalletAuthorizer auth = authorizer;
         if (address(auth) == address(0)) revert AuthorizerNotSet();
         if (!auth.isWallet(msg.sender)) revert NotAuthorizedWallet(msg.sender);
@@ -277,11 +283,9 @@ contract CrossChainSpendRouter is IAny2EVMMessageReceiver, Ownable, ReentrancyGu
             revert InsufficientLiquidity(payload.amount, liquidity);
         }
 
-        // Credit the provider in the remote escrow from local liquidity, using the
-        // escrow's transfer-then-credit convention.
-        token.safeTransfer(address(escrow), payload.amount);
-        escrow.credit(payload.provider, payload.serviceId, payload.amount);
-
+        // Emit before the external calls (strict checks-effects-interactions).
+        // A revert rolls the log back, so ordering the event first is equally
+        // truthful and keeps the emit off the far side of an external call.
         emit CrossChainSpendReceived(
             message.messageId,
             src,
@@ -290,6 +294,11 @@ contract CrossChainSpendRouter is IAny2EVMMessageReceiver, Ownable, ReentrancyGu
             payload.amount,
             payload.agentWallet
         );
+
+        // Credit the provider in the remote escrow from local liquidity, using the
+        // escrow's transfer-then-credit convention.
+        token.safeTransfer(address(escrow), payload.amount);
+        escrow.credit(payload.provider, payload.serviceId, payload.amount);
     }
 
     // =====================================================================

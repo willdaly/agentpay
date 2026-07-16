@@ -14,7 +14,7 @@ control plane — this is that control plane.**
 
 ## Status
 
-Milestones **M1–M7** complete:
+**All milestones (M1–M8) complete. Code frozen.**
 - **M1 Foundation:** repo + CI scaffold, `AgentPayToken`, `PriceFeedAdapter`
   (live-oracle USD↔APT with staleness/sanity guards), `ServiceRegistry`.
 - **M2 The product:** `AgentWallet` + `AgentWalletFactory` enforcing the full spend
@@ -43,9 +43,21 @@ Milestones **M1–M7** complete:
   `provider-sim` (verifies payment on-chain, one-payment-one-delivery),
   `ScoreRegistry` (commit-reveal scoring), and a scripted
   [full demo](scripts/demo/full-demo.ts) covering all seven steps of the brief.
+- **M8 Hardening:** Slither is a **required-pass** CI gate (31 findings triaged: 2
+  fixed, 29 documented with rationale), every contract is size-gated under the
+  24KB EVM limit, and gas is reported in CI. See **[HANDOFF.md](HANDOFF.md)** for
+  the full inventory, findings table, gas highlights, and known limitations.
 
-**198 tests, 100% line / ~95.5% branch coverage** on 19 product contracts. See the
-[milestone plan](CAPSTONE_BUILD_BRIEF.md#9-milestone-order-each-ends-green-tests-pass-coverage-holds-committed).
+**198 tests · 100% line / 95.5% branch coverage** on 19 product contracts ·
+**Slither clean** · all 12 contracts under the 24KB limit.
+
+```bash
+npm run audit   # lint -> tests -> coverage >=90% -> 24KB sizes -> Slither
+```
+
+The one outstanding item is the **live testnet deployment** (needs funded
+throwaway keys); everything is scripted and proven against a local node and two
+simulated chains. See [HANDOFF.md](HANDOFF.md) §2.
 
 ## Architecture
 
@@ -95,7 +107,10 @@ key** funded only with testnet ETH/LINK; private keys are never logged or commit
   explicitly (the revert paths are the product).
 - The 90% lines/branches gate is CI-enforced by `scripts/check-coverage.js`; mocks are
   excluded via `.solcover.js`.
-- `npm run gas` produces a gas report; `npm run slither` runs static analysis.
+- `npm run gas` produces a gas report; `npm run slither` runs static analysis;
+  `npm run sizes` enforces the 24KB EVM limit. `npm run audit` runs every gate.
+- Slither is **required-pass** in CI. Findings are fixed, or excluded with a
+  written rationale in `slither.config.json` — never silently suppressed.
 
 ## Deployed addresses
 
@@ -111,7 +126,7 @@ the address tables populated from the live testnet deploy.
 | Tokenomics + staking + governance | `AgentPayToken`, `ProviderStaking` (+ slashing), `PolicyGovernor` full proposal lifecycle |
 | Oracle integration affecting on-chain behavior | `PriceFeedAdapter`: USD caps enforced at spend time via the live ETH/USD feed |
 | Privacy features for enterprise compliance | `ScoreRegistry` commit-reveal (scores hidden during commit; selective disclosure via salt); audit trail of events + policy-snapshot hashes; owner/agent role-split wallets |
-| Security audit preparation | Slither in CI, `docs/SECURITY_NOTES.md` findings log, per-finding mitigations, final audit report |
+| Security audit preparation | Slither **required-pass** in CI; [`docs/SECURITY_NOTES.md`](docs/SECURITY_NOTES.md) findings log (31 triaged: 2 fixed, 29 documented); [`HANDOFF.md`](HANDOFF.md) audit table |
 | DevOps pipeline + monitoring | GitHub Actions (build, lint, test, coverage gate, Slither); `agent audit` rebuilds spend history from logs alone; gas reporter |
 
 ## Dependencies & attribution

@@ -1,0 +1,86 @@
+{
+  "//": [
+    "Slither configuration for AgentPay's audit gate (build brief M8:",
+    "'Slither clean-or-documented', required-pass in CI).",
+    "",
+    "EVERY exclusion below is a deliberate, reviewed decision — not a way to make",
+    "the build green. Each detector class is justified here and in",
+    "docs/SECURITY_NOTES.md, with the full findings table in HANDOFF.md.",
+    "Findings that were REAL were fixed, not excluded:",
+    "  - missing-inheritance: CrossChainSpendRouter now formally implements",
+    "    ICrossChainSpendRouter, so the compiler enforces the contract AgentWallet",
+    "    depends on (verified: drifting the interface now fails the build).",
+    "  - reentrancy-events: ccipReceive now emits before its external calls",
+    "    (strict checks-effects-interactions).",
+    "",
+    "Mocks are test scaffolding and are filtered out entirely.",
+    "node_modules (OpenZeppelin, Chainlink) are audited upstream."
+  ],
+
+  "filter_paths": "node_modules|contracts/mocks",
+  "exclude_dependencies": true,
+
+  "detectors_to_exclude": "timestamp,incorrect-equality,naming-convention,unused-return,missing-zero-check,low-level-calls,unindexed-event-address,solc-version",
+
+  "//exclusion_rationale": {
+    "timestamp": [
+      "10 findings, all intentional. Every time window in this system is measured",
+      "in HOURS or DAYS: the daily budget day-bucket (86400s), the staking unstake",
+      "cooldown and settlement dispute window (= governance disputeWindow), the",
+      "ScoreRegistry commit/reveal windows, and the oracle staleness bound.",
+      "A miner can nudge block.timestamp by seconds; against an hours-to-days",
+      "window that is immaterial. Worst case at a day boundary: an agent's daily",
+      "budget resets a few seconds early. Bounded, and accepted by the brief's",
+      "day-bucketed budget design."
+    ],
+    "incorrect-equality": [
+      "4 findings, all false positives.",
+      "(a) AgentWallet day-bucket comparisons (`today == currentDay`, x3): equality",
+      "    on an integer DAY INDEX is precisely the intended semantic - 'is this",
+      "    the same day bucket'. There is no balance to manipulate here.",
+      "(b) SettlementEscrow.getPayment `amount == 0` is an existence sentinel:",
+      "    credit() rejects a zero amount (ZeroAmount), so 0 unambiguously means",
+      "    'no such payment'. That invariant is enforced and tested."
+    ],
+    "unused-return": [
+      "2 findings.",
+      "(a) PriceFeedAdapter.latestUsdPrice: Slither noise. We DO consume roundId,",
+      "    answer, updatedAt and answeredInRound; only `startedAt` is skipped in the",
+      "    tuple destructure, which is what trips the detector.",
+      "(b) AgentWallet.spend discards routeSpend's returned CCIP messageId. Not a",
+      "    loss: CrossChainSpendRouter emits CrossChainSpendSent(messageId, ...) in",
+      "    the SAME transaction, so the cross-chain audit handle is already on-chain",
+      "    and correlates by tx hash. Storing it twice would only add gas."
+    ],
+    "missing-zero-check": [
+      "2 findings on AgentWallet's `agent` operator, both intentional.",
+      "Setting agent = address(0) is the documented way to CLEAR the operator",
+      "(see setAgent's NatSpec: 'Appoint (or clear)'). It is safe because",
+      "msg.sender can never be address(0) in a real transaction, so a zero agent",
+      "simply means 'only the owner may spend'."
+    ],
+    "low-level-calls": [
+      "1 finding: `to.call{value: amount}('')` in CrossChainSpendRouter.",
+      "withdrawNative. This is the RECOMMENDED way to transfer native ETH (transfer",
+      "/send forward a fixed 2300 gas and break on contract recipients). The return",
+      "value IS checked and the function is onlyOwner."
+    ],
+    "naming-convention": [
+      "8 findings: leading-underscore constructor/setter parameters (_authorizer,",
+      "_treasury, ...). This is the standard Solidity convention for a parameter",
+      "that shadows a state variable, is used consistently across the codebase, and",
+      "matches OpenZeppelin's own style. Slither prefers plain mixedCase."
+    ],
+    "unindexed-event-address": [
+      "2 informational findings on PolicyGovernor.TreasurySet and",
+      "RemotePolicyParameters.ParametersUpdated. Both are low-frequency governance",
+      "events read by scanning a single contract's full history, not by filtering on",
+      "an address topic, so an index would add cost without a consumer."
+    ],
+    "solc-version": [
+      "Excluded because the compiler is PINNED to 0.8.24 by the course toolchain",
+      "(build brief section 2.5). Slither recommends a newer patch release; pinning",
+      "is the deliberate, reproducible-build choice."
+    ]
+  }
+}

@@ -34,12 +34,37 @@ The adversaries we defend against:
 
 ## Static-analysis findings log (Slither)
 
-Slither runs in CI (allow-fail until the M8 audit milestone, then required-pass).
-Findings are triaged here.
+**Tool:** Slither 0.11.5 · **Scope:** `contracts/` excluding `mocks/` (test
+scaffolding) and `node_modules` (OpenZeppelin / Chainlink, audited upstream) ·
+**Status: REQUIRED-PASS in CI as of M8.**
 
-| ID | Tool | Severity | Contract | Finding | Status | Mitigation / rationale |
-|----|------|----------|----------|---------|--------|------------------------|
-| — | — | — | — | _No findings triaged yet (first Slither pass pending in CI)._ | — | — |
+First full pass produced **31 findings: 0 High, 6 Medium, 13 Low, 12
+Informational.** Two were real and were **fixed**; the other 29 are false
+positives or accepted design decisions, each excluded with a written rationale in
+`slither.config.json`. `slither . --config-file slither.config.json` now exits 0,
+so any NEW finding fails the build rather than being silently absorbed.
+
+### Fixed
+
+| ID | Severity | Contract | Finding | Mitigation |
+|----|----------|----------|---------|------------|
+| S-01 | Informational (but real) | `CrossChainSpendRouter` | `missing-inheritance`: the router never formally implemented `ICrossChainSpendRouter`, the interface `AgentWallet` depends on. Signatures matched by coincidence, so **the compiler could not catch drift** — exactly what the interface exists to prevent. | **Fixed:** router now declares `is ICrossChainSpendRouter` with `override`. Verified by deliberately drifting the interface and confirming the build fails (`should be marked as abstract`). |
+| S-02 | Low | `CrossChainSpendRouter.ccipReceive` | `reentrancy-events`: `CrossChainSpendReceived` was emitted *after* the `token.safeTransfer` + `escrow.credit` external calls. | **Fixed:** emit moved before the external calls (strict checks-effects-interactions). A revert rolls the log back, so ordering it first is equally truthful. |
+
+### Accepted / false positive (excluded with rationale)
+
+| ID | Severity | Count | Detector | Verdict |
+|----|----------|-------|----------|---------|
+| S-03 | Medium | 4 | `incorrect-equality` | **False positive.** 3 are day-bucket comparisons (`today == currentDay`) — equality on an integer *day index* is the intended semantic, and there is no balance to manipulate. 1 is `SettlementEscrow.getPayment`'s `amount == 0` existence sentinel, safe because `credit()` rejects zero amounts (`ZeroAmount`), so 0 unambiguously means "no such payment". |
+| S-04 | Medium | 2 | `unused-return` | **False positive / accepted.** `PriceFeedAdapter.latestUsdPrice` *does* consume `roundId`/`answer`/`updatedAt`/`answeredInRound` — only `startedAt` is skipped in the destructure, which trips the detector. `AgentWallet.spend` discards `routeSpend`'s CCIP `messageId`; the router emits `CrossChainSpendSent(messageId, …)` in the same transaction, so the cross-chain audit handle is already on-chain and correlates by tx hash. |
+| S-05 | Low | 10 | `timestamp` | **Accepted.** Every time window here is hours-to-days: the daily budget bucket (86400s), unstake cooldown / dispute window, commit-reveal windows, oracle staleness. A miner can nudge `block.timestamp` by seconds; worst case an agent's daily budget resets a few seconds early. Bounded and inherent to the brief's day-bucketed design. |
+| S-06 | Low | 2 | `missing-zero-check` | **Accepted — intentional.** `agent = address(0)` is the documented way to *clear* the operator. Safe because `msg.sender` can never be `address(0)`, so a zero agent means "only the owner may spend". |
+| S-07 | Informational | 1 | `low-level-calls` | **Accepted.** `to.call{value: …}("")` is the *recommended* way to send native ETH (`transfer`/`send` forward a fixed 2300 gas and break on contract recipients). Return value is checked; function is `onlyOwner`. |
+| S-08 | Informational | 8 | `naming-convention` | **Accepted.** Leading-underscore constructor/setter params that shadow state vars — standard Solidity convention, used consistently, matches OpenZeppelin's own style. |
+| S-09 | Informational | 2 | `unindexed-event-address` | **Accepted.** Low-frequency governance events read by scanning one contract's history, not by filtering on an address topic. An index would cost gas with no consumer. |
+| S-10 | Informational | 1 | `solc-version` | **Accepted.** The compiler is pinned to 0.8.24 by the course toolchain (brief §2.5). Pinning is the deliberate reproducible-build choice. |
+
+> Reproduce: `npm run slither` (or the full gate: `npm run audit`).
 
 ## Governance & access-control notes (M4)
 

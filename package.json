@@ -11,8 +11,10 @@
     "gas": "REPORT_GAS=true hardhat test",
     "lint": "solhint 'contracts/**/*.sol'",
     "lint:fix": "solhint 'contracts/**/*.sol' --fix",
-    "slither": "slither .",
-    "clean": "hardhat clean"
+    "slither": "slither . --config-file slither.config.json",
+    "clean": "hardhat clean",
+    "sizes": "hardhat compile && node scripts/check-sizes.js",
+    "audit": "npm run lint && npm run coverage:check && npm run sizes && npm run slither"
   },
   "devDependencies": {
     "@chainlink/contracts": "^1.5.0",

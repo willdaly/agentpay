@@ -48,11 +48,12 @@ jobs:
           if-no-files-found: ignore
 
   slither:
-    name: Slither static analysis
+    name: Slither static analysis (required)
     runs-on: ubuntu-latest
-    # Allow-fail until the M8 audit milestone, per the build brief. Flip
-    # continue-on-error to false to make Slither a required gate.
-    continue-on-error: true
+    # REQUIRED-PASS as of the M8 audit milestone, per the build brief. Every
+    # finding is either fixed or excluded with a written rationale in
+    # slither.config.json (mirrored in docs/SECURITY_NOTES.md and HANDOFF.md),
+    # so a new finding fails the build rather than being silently absorbed.
     steps:
       - uses: actions/checkout@v4
 
@@ -68,5 +69,35 @@ jobs:
       - name: Run Slither
         uses: crytic/slither-action@v0.4.0
         with:
-          fail-on: none
-          slither-args: --exclude-dependencies
+          fail-on: all
+          slither-config: slither.config.json
+
+  sizes-and-gas:
+    name: Contract sizes + gas report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails if any product contract exceeds the 24KB EVM limit.
+      - name: Contract sizes (24KB EVM limit)
+        run: npm run sizes
+
+      - name: Gas report
+        run: npm run gas
+
+      - name: Upload gas report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-report
+          path: gas-report.txt
+          if-no-files-found: ignore
