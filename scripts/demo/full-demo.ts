@@ -39,14 +39,36 @@ function banner(n: number, title: string) {
   console.log(`\n${"=".repeat(72)}\n  STEP ${n}. ${title}\n${"=".repeat(72)}`);
 }
 
+/**
+ * Wait for the node to answer, retrying through transient socket errors.
+ *
+ * Needed because a real LLM call inside the agent subprocess takes seconds, and
+ * this script's own pooled RPC socket can be closed as idle in that window — the
+ * next request then fails with ECONNRESET. (With the no-API-key heuristic the
+ * subprocess returns instantly, so the race never shows up.)
+ */
+async function reconnect(attempts = 6): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await ethers.provider.getBlockNumber();
+      return;
+    } catch (e) {
+      if (i === attempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+}
+
 /** Run the real agent CLI, streaming its output into the demo transcript. */
-function agent(args: string[]) {
+async function agent(args: string[]) {
   console.log(`\n$ agent ${args.join(" ")}\n`);
   execFileSync("npx", ["tsx", "src/cli.ts", ...args], {
     cwd: AGENT_DIR,
     stdio: "inherit",
     env: { ...process.env, AGENTPAY_NETWORK: network.name },
   });
+  // Re-establish our own connection before touching the chain again.
+  await reconnect();
 }
 
 async function mineBlocks(n: bigint) {
@@ -208,15 +230,15 @@ async function main() {
 
   // ---------------------------------------------------------------- STEP 3
   banner(3, "agent quote -> the model picks a service; agent spend -> payment lands");
-  agent(["quote", "summarize this support ticket for under $1"]);
-  agent(["spend", String(cheapId)]);
+  await agent(["quote", "summarize this support ticket for under $1"]);
+  await agent(["spend", String(cheapId)]);
 
   console.log(`\n  spent today: $${(Number(await wallet.spentTodayUsd()) / 1e8).toFixed(2)} of $5.00`);
 
   // ---------------------------------------------------------------- STEP 4
   banner(4, "A second spend exceeds the daily budget -> on-chain ExceedsDailyBudget");
   console.log(`  $0.50 already spent; service #${midId} costs $5.00; budget is $5.00/day.`);
-  agent(["spend", String(midId)]);
+  await agent(["spend", String(midId)]);
 
   // ---------------------------------------------------------------- STEP 5
   banner(5, "Governance raises maxPerTxUsd -> the SAME spend now succeeds. No redeploy.");
@@ -227,7 +249,7 @@ async function main() {
   console.log(`  owner raised this wallet's daily budget to $100 (its own choice).`);
   console.log(`  The binding constraint is now the DAO's global maxPerTxUsd = $${(Number(await governor.maxPerTxUsd()) / 1e8).toFixed(2)}.`);
   console.log(`\n  --- BEFORE the proposal ---`);
-  agent(["spend", String(premiumId)]);
+  await agent(["spend", String(premiumId)]);
 
   console.log(`\n  --- Passing a proposal to raise maxPerTxUsd to $25 ---`);
   await (await token.connect(deployer).delegate(deployer.address)).wait();
@@ -244,7 +266,7 @@ async function main() {
   console.log(`  maxPerTxUsd is now $${(Number(await governor.maxPerTxUsd()) / 1e8).toFixed(2)}`);
 
   console.log(`\n  --- AFTER the proposal: the exact same command, no redeploy ---`);
-  agent(["spend", String(premiumId)]);
+  await agent(["spend", String(premiumId)]);
 
   // ---------------------------------------------------------------- STEP 6
   banner(6, "Global pause via governance -> every agent spend halts. Then unpause.");
@@ -258,7 +280,7 @@ async function main() {
     `Emergency: pause all agent spending (demo ${Date.now()})`,
   );
   console.log(`  globalPause = ${await governor.globalPause()}`);
-  agent(["spend", String(cheapId)]);
+  await agent(["spend", String(cheapId)]);
 
   console.log(`\n  --- Unpausing ---`);
   await passProposal(
@@ -273,7 +295,7 @@ async function main() {
 
   // ---------------------------------------------------------------- STEP 7
   banner(7, "agent audit — the whole spend history, rebuilt from events");
-  agent(["audit"]);
+  await agent(["audit"]);
 
   console.log(`\n${"#".repeat(72)}`);
   console.log(`  Demo complete. Every rejection above was on-chain policy working.`);

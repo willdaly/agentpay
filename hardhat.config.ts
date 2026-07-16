@@ -15,9 +15,27 @@ const {
   REPORT_GAS,
 } = process.env;
 
-// Only attach an account if a key is actually present, so `hardhat test` works
-// with no .env at all. Deployment scripts assert the key exists themselves.
-const deployerAccounts = DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [];
+// Attach an account only if the key is genuinely well-formed, so `hardhat test`
+// and local development work with no .env, an empty key, OR a half-filled one
+// still carrying the .env.example placeholder. Hardhat validates accounts when
+// it LOADS this config, so a malformed value here breaks every command — local
+// tests included — not just testnet deploys. Deployment scripts assert the key
+// exists themselves.
+const isWellFormedPrivateKey = (k?: string): boolean =>
+  typeof k === "string" && /^0x[0-9a-fA-F]{64}$/.test(k.trim());
+
+if (DEPLOYER_PRIVATE_KEY && !isWellFormedPrivateKey(DEPLOYER_PRIVATE_KEY)) {
+  // Non-empty but unusable: warn rather than fail, but never stay silent — a
+  // typo'd key would otherwise surface as a confusing "no accounts" error later.
+  console.warn(
+    "[hardhat.config] DEPLOYER_PRIVATE_KEY is set but is not a 0x-prefixed " +
+      "32-byte hex key — ignoring it. Testnet deploys will have no account.",
+  );
+}
+
+const deployerAccounts = isWellFormedPrivateKey(DEPLOYER_PRIVATE_KEY)
+  ? [DEPLOYER_PRIVATE_KEY!.trim()]
+  : [];
 
 const config: HardhatUserConfig = {
   solidity: {
