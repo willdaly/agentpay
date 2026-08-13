@@ -80,6 +80,21 @@ describe("CrossChainSpendRouter", () => {
       expect(await router.destGasLimit()).to.equal(300_000n);
     });
 
+    // Regression guard for a bug a LIVE CCIP deploy caught: a real OffRamp checks
+    // ERC165 support for IAny2EVMMessageReceiver before calling ccipReceive, and
+    // SKIPS the callback (marking the message success anyway) if it's missing.
+    // Without supportsInterface, cross-chain spends silently never settle.
+    it("declares ERC165 support for the CCIP receiver interface", async () => {
+      const { router } = await loadFixture(deploy);
+      const IANY2EVM = "0x85572ffb"; // type(IAny2EVMMessageReceiver).interfaceId
+      const IERC165 = "0x01ffc9a7";
+      const INVALID = "0xffffffff"; // ERC165 requires this to be false
+      expect(await router.supportsInterface(IANY2EVM)).to.equal(true);
+      expect(await router.supportsInterface(IERC165)).to.equal(true);
+      expect(await router.supportsInterface(INVALID)).to.equal(false);
+      expect(await router.supportsInterface("0xdeadbeef")).to.equal(false);
+    });
+
     const deps = ["token", "ccipRouter", "escrow"];
     deps.forEach((name, i) => {
       it(`reverts when ${name} is zero`, async () => {

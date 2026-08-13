@@ -6,6 +6,7 @@ import {IRouterClient} from
     "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import {IAny2EVMMessageReceiver} from
     "@chainlink/contracts-ccip/contracts/interfaces/IAny2EVMMessageReceiver.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /// @notice Test-only stand-in for the Chainlink CCIP router. Captures outbound
 ///         messages from {ccipSend} and can replay them into a receiver via
@@ -107,7 +108,33 @@ contract MockCCIPRouter is IRouterClient {
             data: data,
             destTokenAmounts: new Client.EVMTokenAmount[](0)
         });
+
+        // Replicate the REAL CCIP OffRamp's ERC165 gate: it invokes ccipReceive
+        // ONLY if the receiver declares support for IAny2EVMMessageReceiver.
+        // Without this check the mock would call ccipReceive on any address —
+        // masking a receiver that forgot ERC165, which on live CCIP would have
+        // its callback silently skipped (message still marked SUCCESS). A receiver
+        // that fails this gate here delivers nothing, so tests asserting a credit
+        // will fail — exactly as they should.
+        if (!_supportsCcipReceiver(receiver)) {
+            emit DeliverySkippedUnsupportedReceiver(receiver, messageId);
+            return;
+        }
         IAny2EVMMessageReceiver(receiver).ccipReceive(message);
+    }
+
+    event DeliverySkippedUnsupportedReceiver(address indexed receiver, bytes32 messageId);
+
+    /// @dev try/catch mirrors the OffRamp: a reverting or false supportsInterface
+    ///      both mean "not a CCIP receiver — skip the callback".
+    function _supportsCcipReceiver(address receiver) private view returns (bool) {
+        try IERC165(receiver).supportsInterface(type(IAny2EVMMessageReceiver).interfaceId)
+            returns (bool ok)
+        {
+            return ok;
+        } catch {
+            return false;
+        }
     }
 
     /// @notice Convenience: relay message `i` captured by THIS mock into `receiver`,

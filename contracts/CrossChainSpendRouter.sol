@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {Client} from "@chainlink/contracts-ccip/contracts/libraries/Client.sol";
 import {IRouterClient} from
@@ -62,6 +63,7 @@ import {ICrossChainSpendRouter} from "./interfaces/ICrossChainSpendRouter.sol";
 contract CrossChainSpendRouter is
     ICrossChainSpendRouter,
     IAny2EVMMessageReceiver,
+    IERC165,
     Ownable,
     ReentrancyGuard
 {
@@ -299,6 +301,25 @@ contract CrossChainSpendRouter is
         // escrow's transfer-then-credit convention.
         token.safeTransfer(address(escrow), payload.amount);
         escrow.credit(payload.provider, payload.serviceId, payload.amount);
+    }
+
+    /// @notice ERC165 — LOAD-BEARING for CCIP delivery, not decoration.
+    /// @dev A CCIP OffRamp calls `IERC165(receiver).supportsInterface(...)` BEFORE
+    ///      invoking {ccipReceive}. If that check reverts or returns false, the
+    ///      OffRamp SKIPS the callback entirely and still marks the message
+    ///      `SUCCESS` — so a data-only message would silently vanish (no credit,
+    ///      no event) while CCIP reports success. Declaring support here is what
+    ///      makes the OffRamp actually call {ccipReceive}. Regression-guarded by
+    ///      `CrossChainSpendRouter.supportsInterface.test.ts` and by the mock
+    ///      OffRamp, which now enforces the same gate.
+    function supportsInterface(bytes4 interfaceId)
+        public
+        pure
+        override
+        returns (bool)
+    {
+        return interfaceId == type(IAny2EVMMessageReceiver).interfaceId
+            || interfaceId == type(IERC165).interfaceId;
     }
 
     // =====================================================================

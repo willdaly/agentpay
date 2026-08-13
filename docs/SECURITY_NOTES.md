@@ -126,6 +126,37 @@ This is the fallback the build brief explicitly sanctions, and its costs are:
   a funding-and-approval step. The router holds an ETH budget; `routeSpend` reverts
   with `InsufficientNativeForFee` rather than failing opaquely.
 
+### Finding X-01 (High, FIXED) — missing ERC165 gate silently dropped delivery
+
+**Surfaced by the live testnet deploy, not the test suite.** A Chainlink CCIP
+OffRamp calls `IERC165(receiver).supportsInterface(type(IAny2EVMMessageReceiver)
+.interfaceId)` **before** invoking `ccipReceive`. If that call reverts or returns
+false, the OffRamp **skips the callback entirely and still records the message as
+`SUCCESS`**. `CrossChainSpendRouter` implemented `ccipReceive` but did not declare
+ERC165 support, so `supportsInterface` reverted on-chain — every cross-chain spend
+reported success at the CCIP layer while crediting nothing (no event, no token
+movement, liquidity untouched).
+
+- **Impact:** total loss of cross-chain settlement, with a *false* success signal —
+  the worst kind, because monitoring that trusts CCIP's status would never notice.
+  Funds locked on the home side would strand (recoverable only via the owner's
+  `rescueLockedTokens`).
+- **Why the suite missed it:** the `MockCCIPRouter` called `ccipReceive` directly,
+  bypassing the OffRamp's ERC165 gate — a fidelity gap between the mock and the
+  real router.
+- **Fix:** the router now implements `supportsInterface` returning true for
+  `IAny2EVMMessageReceiver` and `IERC165` (on-chain proof: `supportsInterface(
+  0x85572ffb) => true`). The mock now enforces the same gate (skipping delivery to
+  a non-supporting receiver), so an integration test asserting a credit fails if
+  the gate is ever removed; a focused unit test asserts the interface ids directly.
+- **Live confirmation:** the Base receiver was redeployed with the fix
+  (`0x664079B23Db022344b08F8952b5Cb7964a65BfCd`) and a real Sepolia→Base spend
+  settled end-to-end (credit + provider withdrawal) — see `HANDOFF.md` §7.
+
+_Lesson: a mock that is more permissive than the real dependency produces false
+confidence. Mocks must replicate the dependency's guard conditions, not just its
+happy path._
+
 ### Remote-chain parameter drift (accepted)
 
 Governance lives only on the home chain. The remote escrow still needs to read

@@ -212,16 +212,35 @@ npx hardhat run scripts/demo/full-demo.ts --network localhost
 | 6 | Global pause via governance → all spends halt; unpause | ✅ `Paused`, then resumed | localhost + governance test (not re-run live — see note) |
 | 7 | `agent audit` prints the reconstructed log | ✅ 2 spends, $20.50, rebuilt from events alone | ✅ Sepolia — `agent audit` rebuilt the spend from `SpendExecuted` logs against the live RPC |
 
-### The cross-chain spend — brief §10's CCIP leg, live on testnet
+### The cross-chain spend — brief §10's CCIP leg, live on testnet ✅ SETTLED
 
-The highest-risk requirement, now executed on real testnets (not just the
-simulated-chain `CrossChain.integration.test.ts`):
+The highest-risk requirement, executed **end-to-end on real testnets** — home
+policy → CCIP → remote credit → provider withdrawal:
 
 | Leg | Evidence |
 |-----|----------|
-| Home spend routes over CCIP (Sepolia) | [`0x2a4b1e…`](https://sepolia.etherscan.io/tx/0x2a4b1ee21d5f4d4a2d424920c30587c1c66d7b59700ed7daaaa1922686009966) — `SpendExecuted` 3.19 APT ($2.00), APT locked in the home router |
-| CCIP message | `0x242734f9a11c531dcee16b7c2de32b5b7615bd49d9d3e4c369089aac8be5f6db` — [track on ccip.chain.link](https://ccip.chain.link/msg/0x242734f9a11c531dcee16b7c2de32b5b7615bd49d9d3e4c369089aac8be5f6db) |
-| Remote credit (Base Sepolia) | _delivery in flight at time of writing (~15-25 min); confirm via `scripts/demo/cross-chain-verify.ts` and the CCIP explorer link above_ |
+| Home spend routes over CCIP (Sepolia) | [`0xbb161b…`](https://sepolia.etherscan.io/tx/0xbb161b7b05f2231cc59ea6429113e8dc9535f0d1bdb78cddfbde8060c47ca9ea) — `SpendExecuted` 3.194 APT ($2.00), APT locked in the home router |
+| CCIP message | [`0xa14142dd…`](https://ccip.chain.link/msg/0xa14142dd2258f03b7fc04e41902195b29de06d3ca2e1fbef071b5944ba07d9e3) — delivered ~15 min later |
+| `ccipReceive` executes on Base | [`0x21ff2f30…`](https://sepolia.basescan.org/tx/0x21ff2f30948acf460e54a6a8bde3ef87b24958cc5f9f1592f72a839be363cfef) (block 45409567) — `CrossChainSpendReceived`, provider credited **3.194 APT** in the remote escrow from liquidity |
+| Provider withdraws on Base | [`0xa1530d01…`](https://sepolia.basescan.org/tx/0xa1530d01689c8bd7426c0d656af8b264146ccb5c79b54699a6797c15739b3601) — 3.194 APT pulled from the remote escrow. Loop closed. |
+
+> **A real bug this live milestone caught — and why it mattered.** The *first*
+> live attempt (message
+> [`0x242734…`](https://ccip.chain.link/msg/0x242734f9a11c531dcee16b7c2de32b5b7615bd49d9d3e4c369089aac8be5f6db))
+> showed CCIP `state: SUCCESS` yet **never credited the provider**. Root cause: a
+> real CCIP OffRamp calls `receiver.supportsInterface(IAny2EVMMessageReceiver)`
+> (ERC165) *before* invoking `ccipReceive`, and **silently skips the callback —
+> still marking the message success — if that check reverts.** The router
+> implemented `ccipReceive` but not `supportsInterface`, so every cross-chain
+> spend "succeeded" at the CCIP layer while settling nothing. The M6 test suite
+> missed it because the mock router called `ccipReceive` directly, bypassing the
+> gate. **Fix (commit after M8):** the router now declares ERC165 support
+> (verified on-chain: `supportsInterface(0x85572ffb) => true`); the mock now
+> enforces the same gate so the suite catches any regression; a focused test
+> asserts it. The Base receiver was redeployed with the fix
+> (`0x664079B23Db022344b08F8952b5Cb7964a65BfCd`, re-verified on Basescan) and the
+> spend above settled. This is the canonical example of a class of bug that
+> *only a live deploy surfaces* — exactly why the milestone was worth running.
 
 **Note on steps 4–6 (live):** these exercise the governance lifecycle, whose
 `votingPeriod` (50 blocks) + timelock delay make a live run a ~30-minute,

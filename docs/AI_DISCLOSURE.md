@@ -389,4 +389,49 @@ staleness bound, 60s timelock, synthetic APT peg) are enumerated.
 
 ---
 
-_M1–M8 complete. Everything after this is documentation and demo recording._
+### Live testnet deployment (post-M8)
+
+**Date:** 2026-08-12
+
+**AI-generated / AI-driven (Claude Code):**
+- Full live deployment to Ethereum Sepolia (home, 10 contracts) + Base Sepolia
+  (remote, 8 contracts); CCIP lane opened both ways; all 18 contracts
+  source-verified on Etherscan/Basescan.
+- New tooling: `scripts/util/preflight.ts` (on-chain feed verification),
+  `verify-all.ts` (Etherscan V2 unified-key verification of both chains),
+  `scripts/demo/cross-chain-{spend,verify}.ts`.
+- A real Sepolia→Base cross-chain spend settled end-to-end (home policy → CCIP →
+  remote credit → provider withdrawal). Tx hashes in `HANDOFF.md` §7.
+
+**Bugs the live deploy surfaced, each fixed at the root (verified by running):**
+1. `DEPLOYER_PRIVATE_KEY` without a `0x` prefix left deploys with no account —
+   `hardhat.config` now normalizes both forms.
+2. Base ETH/USD feed had an invalid EIP-55 checksum — verified the canonical
+   address on-chain + against Chainlink's directory; `deploy.ts` now ASSERTS the
+   feed is a genuine 8-dp "ETH / USD" feed before wiring it.
+3. `agent audit` scanned logs from block 0, tripping public-RPC `eth_getLogs`
+   range caps — added a chunked scan from the wallet's creation block; verified
+   working against the live Sepolia RPC.
+4. **`CrossChainSpendRouter` was missing ERC165 `supportsInterface`** — a real
+   CCIP OffRamp skips `ccipReceive` (marking the message SUCCESS anyway) if the
+   receiver doesn't declare `IAny2EVMMessageReceiver` support. The first live
+   cross-chain spend "succeeded" per CCIP yet settled nothing. Fixed the contract,
+   **hardened the mock to enforce the same ERC165 gate** (the mock's fidelity gap
+   was why the M6 suite missed it), added a regression test, redeployed + verified
+   the Base receiver, and confirmed a real spend settles. See `SECURITY_NOTES.md`
+   → Finding X-01 and `HANDOFF.md` §7.
+
+**Re-verified after the contract change:** 199 tests, 100% line / 95.55% branch
+coverage, Slither 0 findings, all sizes under 24KB, solhint 0 errors.
+
+**Honest deviations (in HANDOFF):** governance demo steps 4–6 were not re-run live
+(their voting-period + timelock waits make a live run impractical; proven by the
+governance integration test + localhost demo); the Sepolia *sender* router was not
+redeployed (its receiver path is unused in the Sepolia→Base direction and
+redeploying it cascades through the factory + escrow); the public Base RPC was
+flaky (retried throughout).
+
+---
+
+_M1–M8 complete; live testnet deployment complete with a real cross-chain spend
+settled. Everything after this is documentation and demo recording._

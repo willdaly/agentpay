@@ -36,33 +36,44 @@ async function main() {
   const fromBlock = process.env.FROM_BLOCK
     ? Number(process.env.FROM_BLOCK)
     : Math.max(0, latest - 9000);
+  // The DEFINITIVE settlement signal is the provider's withdrawable balance
+  // (an eth_call, robust to the flaky log-query RPC). Check it FIRST and always —
+  // an earlier version returned early on an empty log result and so couldn't
+  // distinguish "not landed" from "landed but the RPC dropped the logs".
+  const provider = process.env.PROVIDER;
+  if (provider) {
+    const claimable = await escrow.withdrawable(provider);
+    if (claimable > 0n) {
+      console.log(
+        `SETTLED: provider ${provider} is owed ${ethers.formatEther(claimable)} APT ` +
+          `in the remote escrow — the cross-chain spend credited on Base.`,
+      );
+    } else {
+      console.log(
+        `Provider ${provider} withdrawable: 0 APT — not settled yet ` +
+          `(if ccip.chain.link shows the message delivered/success but this stays 0, ` +
+          `the receiver's ccipReceive was skipped; see SECURITY_NOTES).`,
+      );
+    }
+  }
+
   const events = await router.queryFilter(
     router.filters.CrossChainSpendReceived(),
     fromBlock,
     latest,
   );
   if (events.length === 0) {
-    console.log("No CrossChainSpendReceived yet. If the CCIP message still shows");
-    console.log("'in flight' on ccip.chain.link, wait and re-run.");
+    console.log("(no CrossChainSpendReceived events found in the scanned window)");
     return;
   }
 
-  console.log(`${events.length} cross-chain spend(s) received:`);
+  console.log(`\n${events.length} cross-chain spend(s) received (from logs):`);
   for (const e of events) {
     const a = (e as ethers.EventLog).args;
     console.log(
       `  block ${e.blockNumber}  service #${a.serviceId}  ` +
-        `${ethers.formatEther(a.amount)} APT -> ${a.provider}`,
+        `${ethers.formatEther(a.amount)} APT -> ${a.provider}  msgId ${a.messageId}`,
     );
-    console.log(`    src messageId: ${a.messageId}`);
-    const claimable = await escrow.withdrawable(a.provider);
-    console.log(`    provider withdrawable in remote escrow: ${ethers.formatEther(claimable)} APT`);
-  }
-
-  const provider = process.env.PROVIDER;
-  if (provider) {
-    const claimable = await escrow.withdrawable(provider);
-    console.log(`\nProvider ${provider} withdrawable: ${ethers.formatEther(claimable)} APT`);
   }
   console.log("");
 }
