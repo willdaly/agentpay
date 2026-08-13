@@ -103,8 +103,15 @@ async function main() {
     console.log(`6. Payment is time-locked ${window}s (release then withdraw).`);
   }
 
-  // 7. Audit: reconstruct the spend history from SpendExecuted logs.
-  const events = await wallet.queryFilter(wallet.filters.SpendExecuted());
+  // 7. Audit: reconstruct the spend history from SpendExecuted logs. Scan from
+  // the wallet's creation block (not genesis) so public RPCs' eth_getLogs range
+  // caps aren't tripped.
+  const createdBlock = rcpt!.blockNumber;
+  const events = await wallet.queryFilter(
+    wallet.filters.SpendExecuted(),
+    createdBlock,
+    "latest",
+  );
   console.log(`\n7. Audit — ${events.length} spend(s) reconstructed from logs:`);
   console.log(`   ${"service".padEnd(9)}${"USD".padEnd(10)}${"APT".padEnd(14)}provider`);
   for (const e of events) {

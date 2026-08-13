@@ -48,30 +48,35 @@ with `npm run sizes` (CI-enforced).
 
 ### Deployed addresses
 
+**Deployed and source-verified live on 2026-08-12** (deployer
+`0xc72BBE24C21D98316e01CA4c8e8B9475A6E50255`):
+
 | Chain | Status |
 |---|---|
-| Ethereum Sepolia (home) | **Not yet deployed.** Needs a funded throwaway key. |
-| Base Sepolia (remote) | **Not yet deployed.** Needs a funded throwaway key. |
+| Ethereum Sepolia (home) | ✅ 10 contracts deployed + wired; all verified on Etherscan |
+| Base Sepolia (remote) | ✅ 8 contracts deployed + wired; all verified on Basescan |
 
-**This is the one outstanding item.** Everything is scripted and proven against a
-local node and two simulated chains; the live deploy needs testnet ETH on both
-chains and is a one-command operation:
+Full per-contract address / deploy-tx / verified-source tables:
+**[docs/addresses.md](docs/addresses.md)**. The CCIP lane is open both ways
+(home router funded for fees; remote router seeded with 10,000 APT liquidity).
+
+Reproduce (idempotent; one command per step):
 
 ```bash
-npx hardhat run scripts/deploy/deploy.ts --network sepolia       # home
-npx hardhat run scripts/deploy/deploy.ts --network baseSepolia   # remote
-npx hardhat run scripts/deploy/wire-lane.ts --network sepolia    # open the lane
-npx hardhat run scripts/deploy/wire-lane.ts --network baseSepolia
+npx hardhat run scripts/util/preflight.ts   --network baseSepolia  # verify the feed on-chain
+npx hardhat run scripts/deploy/deploy.ts     --network sepolia      # home
+npx hardhat run scripts/deploy/deploy.ts     --network baseSepolia  # remote
+npx hardhat run scripts/deploy/wire-lane.ts  --network sepolia      # open + fund the lane
+npx hardhat run scripts/deploy/wire-lane.ts  --network baseSepolia  # allowlist + seed liquidity
+npx hardhat run scripts/util/verify-all.ts   --network sepolia      # verify sources
+npx hardhat run scripts/util/verify-all.ts   --network baseSepolia
 ```
-
-Fill `docs/addresses.md` (tables + explorer links + deploy tx hashes) from
-`deployments/<network>.json`, which the deploy script writes.
 
 ### External dependencies (verified from official docs at build time)
 
 | Item | Sepolia | Base Sepolia |
 |---|---|---|
-| ETH/USD Data Feed | `0x694AA1769357215DE4FAC081bf1f309aDC325306` ✓ (8 dp, 3600s) | `0x4aDC67696bA383F43DD60A9e78F2C97FbbFc7cb1` (re-verify) |
+| ETH/USD Data Feed | `0x694AA1769357215DE4FAC081bf1f309aDC325306` ✓ (8 dp, 3600s) | `0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1` ✓ (8 dp, 1200s, on-chain verified) |
 | CCIP Router | `0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59` ✓ | `0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93` ✓ |
 | LINK | `0x779877A7B0D9E8603169DdbD7836e478b4624789` ✓ | `0xE4aB69C077896252FAFBD49EFD26B5D171A32410` ✓ |
 | Chain selector | `16015286601757825753` ✓ | `10344971235874465080` ✓ |
@@ -197,21 +202,35 @@ export PROVIDER_SIM_URL=http://127.0.0.1:8787                     # terminal 2
 npx hardhat run scripts/demo/full-demo.ts --network localhost
 ```
 
-| # | Step | Status (localhost, verified) | Sepolia tx |
+| # | Step | Status (localhost, verified) | Live testnet |
 |---|---|---|---|
-| 1 | Provider registers a service + stakes APT | ✅ 3 services, 100 APT staked | _pending deploy_ |
-| 2 | Wallet funded; owner sets allowlist + $5/day budget | ✅ 200 APT; owner-only config | _pending_ |
-| 3 | `agent quote` → LLM picks; `agent spend` → payment lands; provider-sim verifies and serves | ✅ `Decision (llm)`, real Claude inference served after on-chain verification | _pending_ |
-| 4 | Second spend exceeds daily budget | ✅ `ExceedsDailyBudget` | _pending_ |
-| 5 | **Governance raises `maxPerTxUsd` → same spend now succeeds, no redeploy** | ✅ `ExceedsPerTxCap` → proposal → `SPEND ALLOWED`. Differing `policySnapshot` hashes capture the change. | _pending_ |
-| 6 | Global pause via governance → all spends halt; unpause | ✅ `Paused`, then resumed | _pending_ |
-| 7 | `agent audit` prints the reconstructed log | ✅ 2 spends, $20.50, rebuilt from events alone | _pending_ |
+| 1 | Provider registers a service + stakes APT | ✅ 3 services, 100 APT staked | ✅ Sepolia — [register](https://sepolia.etherscan.io/tx/0xb37c3624aad3c5e6670694d6fa8d3d50b9c6adbb71d3bea1b2d8647af119fa0d) · [stake](https://sepolia.etherscan.io/tx/0x00ec5da69022106c5608522459a415669996340276c7e7122e887e8d22ab8066) |
+| 2 | Wallet funded; owner sets allowlist + budget | ✅ 200 APT; owner-only config | ✅ Sepolia — wallet `0x8595…011f35`, funded 100 APT, allowlist + $10/day |
+| 3 | Spend lands; payment settles | ✅ `Decision (llm)`, real Claude inference served after on-chain verification | ✅ Sepolia local spend [`0x0245e6…`](https://sepolia.etherscan.io/tx/0x0245e6e8d62281aa72800daf3f11061a3ea658c9b1f1d42aa43558b906eed9b7) — $0.50, provider withdrew |
+| 4 | Second spend exceeds daily budget | ✅ `ExceedsDailyBudget` | localhost + governance/wallet tests (not re-run live — see note) |
+| 5 | **Governance raises `maxPerTxUsd` → same spend now succeeds, no redeploy** | ✅ `ExceedsPerTxCap` → proposal → `SPEND ALLOWED`; differing `policySnapshot` hashes capture the change | localhost + `Governance.integration.test.ts` (not re-run live — see note) |
+| 6 | Global pause via governance → all spends halt; unpause | ✅ `Paused`, then resumed | localhost + governance test (not re-run live — see note) |
+| 7 | `agent audit` prints the reconstructed log | ✅ 2 spends, $20.50, rebuilt from events alone | ✅ Sepolia — `agent audit` rebuilt the spend from `SpendExecuted` logs against the live RPC |
 
-**Cross-chain (§10 step 3's CCIP leg)** is proven against two *simulated* chains
-in `CrossChain.integration.test.ts` (12 tests), not yet on live testnets.
+### The cross-chain spend — brief §10's CCIP leg, live on testnet
 
-Fill the tx-hash column from the live run; `deployments/<network>.json` and the
-CLI's printed hashes give you every value.
+The highest-risk requirement, now executed on real testnets (not just the
+simulated-chain `CrossChain.integration.test.ts`):
+
+| Leg | Evidence |
+|-----|----------|
+| Home spend routes over CCIP (Sepolia) | [`0x2a4b1e…`](https://sepolia.etherscan.io/tx/0x2a4b1ee21d5f4d4a2d424920c30587c1c66d7b59700ed7daaaa1922686009966) — `SpendExecuted` 3.19 APT ($2.00), APT locked in the home router |
+| CCIP message | `0x242734f9a11c531dcee16b7c2de32b5b7615bd49d9d3e4c369089aac8be5f6db` — [track on ccip.chain.link](https://ccip.chain.link/msg/0x242734f9a11c531dcee16b7c2de32b5b7615bd49d9d3e4c369089aac8be5f6db) |
+| Remote credit (Base Sepolia) | _delivery in flight at time of writing (~15-25 min); confirm via `scripts/demo/cross-chain-verify.ts` and the CCIP explorer link above_ |
+
+**Note on steps 4–6 (live):** these exercise the governance lifecycle, whose
+`votingPeriod` (50 blocks) + timelock delay make a live run a ~30-minute,
+multi-proposal affair per parameter. They are proven by the passing
+`Governance.integration.test.ts` (propose → vote → timelock → execute changes
+`AgentWallet` behavior with no redeploy) and the localhost `full-demo.ts` run
+above, which drives the *same* on-chain code paths. The live testnet run
+prioritized the cross-chain spend — the milestone that genuinely could not be
+proven without two real chains.
 
 ---
 

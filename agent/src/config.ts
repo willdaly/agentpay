@@ -99,6 +99,11 @@ export interface AgentContext {
    * key. On a testnet, AGENT_PRIVATE_KEY supplies the key instead.
    */
   agentOperator?: string;
+  /**
+   * Block the wallet was created at. `agent audit` starts its log scan here so it
+   * doesn't sweep from genesis — which trips public RPCs' eth_getLogs range caps.
+   */
+  createdBlock?: number;
   /** Optional: provider-sim endpoint for inference services. */
   providerEndpoint?: string;
 }

@@ -1,5 +1,7 @@
 # AgentPay — Policy-Governed AI Agent Payments
 
+[![CI](https://github.com/willdaly/agentpay/actions/workflows/ci.yml/badge.svg)](https://github.com/willdaly/agentpay/actions/workflows/ci.yml)
+
 AgentPay is an on-chain **control plane** that lets autonomous AI agents spend
 cryptocurrency on services under enforceable, governable policy: per-transaction USD
 caps, rolling daily budgets, counterparty allowlists, oracle-priced limits, staked

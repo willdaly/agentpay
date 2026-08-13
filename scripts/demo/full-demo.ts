@@ -220,6 +220,7 @@ async function main() {
       {
         wallet: walletAddr,
         agentOperator: agentOperator.address,
+        createdBlock: rcpt!.blockNumber,
         providerEndpoint: process.env.PROVIDER_SIM_URL,
       },
       null,

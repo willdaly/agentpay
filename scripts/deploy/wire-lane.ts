@@ -21,8 +21,11 @@ const PEER: Record<string, string> = {
 };
 
 // Native ETH kept on the home router to pay CCIP fees, and APT liquidity seeded
-// on the remote router to settle incoming spends.
-const FEE_BUDGET = ethers.parseEther("0.05");
+// on the remote router to settle incoming spends. FEE_BUDGET is sized for a
+// demo's worth of data-only sends (each costs a small fraction of an ETH on this
+// testnet lane) while leaving the deployer enough Sepolia ETH for demo gas; top
+// the router up with fundNative() for heavier use. Overridable via env.
+const FEE_BUDGET = ethers.parseEther(process.env.CCIP_FEE_BUDGET_ETH ?? "0.02");
 const REMOTE_LIQUIDITY = ethers.parseEther("10000");
 
 async function main() {

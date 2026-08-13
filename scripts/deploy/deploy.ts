@@ -74,7 +74,30 @@ async function main() {
       cfg.mockInitialEthUsd,
     ]);
   } else {
-    console.log(`= ETH/USD feed (external) ${feed}`);
+    // Assert the configured feed IS the ETH/USD feed, read on-chain, before we
+    // wire it into the price adapter. A wrong address deploys fine and then
+    // silently misprices every spend, so fail loudly here instead.
+    const agg = new ethers.Contract(
+      feed,
+      [
+        "function description() view returns (string)",
+        "function decimals() view returns (uint8)",
+      ],
+      ethers.provider,
+    );
+    const [description, decimals] = await Promise.all([
+      agg.description(),
+      agg.decimals(),
+    ]);
+    const okDesc = description.trim().toUpperCase().replace(/\s+/g, "") === "ETH/USD";
+    if (!okDesc || Number(decimals) !== 8) {
+      throw new Error(
+        `Configured ETH/USD feed ${feed} on ${network.name} is not an 8-decimal ` +
+          `"ETH / USD" feed (got "${description}" @ ${decimals}). Aborting deploy. ` +
+          `Fix external.ethUsdFeed in config/networks.ts.`,
+      );
+    }
+    console.log(`= ETH/USD feed (external, verified) ${feed} — "${description}" @ ${decimals}dp`);
   }
 
   // 3. Price adapter.

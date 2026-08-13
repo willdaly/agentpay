@@ -21,21 +21,29 @@ const {
 // it LOADS this config, so a malformed value here breaks every command — local
 // tests included — not just testnet deploys. Deployment scripts assert the key
 // exists themselves.
-const isWellFormedPrivateKey = (k?: string): boolean =>
-  typeof k === "string" && /^0x[0-9a-fA-F]{64}$/.test(k.trim());
+//
+// A 32-byte hex key is accepted with OR without the `0x` prefix (a common
+// export ambiguity) and normalized to the 0x form Hardhat requires.
+function normalizePrivateKey(k?: string): string | undefined {
+  if (typeof k !== "string") return undefined;
+  const t = k.trim();
+  const withPrefix = t.startsWith("0x") ? t : t.length === 64 ? `0x${t}` : t;
+  return /^0x[0-9a-fA-F]{64}$/.test(withPrefix) ? withPrefix : undefined;
+}
 
-if (DEPLOYER_PRIVATE_KEY && !isWellFormedPrivateKey(DEPLOYER_PRIVATE_KEY)) {
+const normalizedDeployerKey = normalizePrivateKey(DEPLOYER_PRIVATE_KEY);
+
+if (DEPLOYER_PRIVATE_KEY && !normalizedDeployerKey) {
   // Non-empty but unusable: warn rather than fail, but never stay silent — a
   // typo'd key would otherwise surface as a confusing "no accounts" error later.
   console.warn(
-    "[hardhat.config] DEPLOYER_PRIVATE_KEY is set but is not a 0x-prefixed " +
-      "32-byte hex key — ignoring it. Testnet deploys will have no account.",
+    "[hardhat.config] DEPLOYER_PRIVATE_KEY is set but is not a 32-byte hex key " +
+      "(64 hex chars, optionally 0x-prefixed) — ignoring it. Testnet deploys " +
+      "will have no account.",
   );
 }
 
-const deployerAccounts = isWellFormedPrivateKey(DEPLOYER_PRIVATE_KEY)
-  ? [DEPLOYER_PRIVATE_KEY!.trim()]
-  : [];
+const deployerAccounts = normalizedDeployerKey ? [normalizedDeployerKey] : [];
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -61,11 +69,14 @@ const config: HardhatUserConfig = {
       chainId: 84532,
     },
   },
+  // Etherscan V2: a single Etherscan API key verifies every supported chain
+  // (Sepolia AND Base Sepolia, chainid 84532) through the unified endpoint, so
+  // no separate Basescan key is needed. A legacy per-chain BASESCAN_API_KEY, if
+  // set, still overrides for Base.
   etherscan: {
-    apiKey: {
-      sepolia: ETHERSCAN_API_KEY ?? "",
-      baseSepolia: BASESCAN_API_KEY ?? "",
-    },
+    apiKey: BASESCAN_API_KEY
+      ? { sepolia: ETHERSCAN_API_KEY ?? "", baseSepolia: BASESCAN_API_KEY }
+      : (ETHERSCAN_API_KEY ?? ""),
   },
   gasReporter: {
     enabled: REPORT_GAS === "true",

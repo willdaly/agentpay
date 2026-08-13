@@ -95,6 +95,27 @@ export function spendErrorInterfaces(): ethers.Interface[] {
   ];
 }
 
+/**
+ * queryFilter that respects public-RPC block-range caps (Sepolia 50k, Base 10k,
+ * some as low as a few thousand). Scans [fromBlock, toBlock] in bounded windows
+ * so `agent audit` works against real endpoints, not just a local node where an
+ * unbounded scan is fine.
+ */
+export async function chunkedQueryFilter(
+  contract: ethers.Contract,
+  filter: ethers.DeferredTopicFilter,
+  fromBlock: number,
+  toBlock: number,
+  chunk = 9000, // safe under Base's 10k cap and Sepolia's 50k
+): Promise<(ethers.Log | ethers.EventLog)[]> {
+  const out: (ethers.Log | ethers.EventLog)[] = [];
+  for (let start = fromBlock; start <= toBlock; start += chunk) {
+    const end = Math.min(start + chunk - 1, toBlock);
+    out.push(...(await contract.queryFilter(filter, start, end)));
+  }
+  return out;
+}
+
 /** USD (8-decimal fixed point) -> human string. */
 export function fmtUsd(usd8: bigint): string {
   return `$${(Number(usd8) / 1e8).toFixed(2)}`;

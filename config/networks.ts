@@ -125,9 +125,12 @@ export const CONFIGS: Record<string, DeployConfig> = {
     label: "Base Sepolia",
     role: "remote",
     external: {
-      // Base Sepolia ETH/USD (re-verify from the Chainlink feed directory before
-      // relying on it; the M6 cross-chain path does not depend on this feed).
-      ethUsdFeed: "0x4aDC67696bA383F43DD60A9e78F2C97FbbFc7cb1",
+      // Base Sepolia ETH/USD — verified on-chain (description "ETH / USD",
+      // 8 decimals) and against the Chainlink feed directory
+      // (feeds-ethereum-testnet-sepolia-base-1.json, 1200s heartbeat). The
+      // earlier config value had an invalid EIP-55 checksum (a mis-cased 'F');
+      // this is the canonical address.
+      ethUsdFeed: "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1",
       // Verified from the CCIP directory (testnet, Base Sepolia).
       ccipRouter: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93",
       linkToken: "0xE4aB69C077896252FAFBD49EFD26B5D171A32410",

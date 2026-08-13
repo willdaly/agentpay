@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { fmtUsd, providerFor, readContract } from "../chain";
+import { chunkedQueryFilter, fmtUsd, providerFor, readContract } from "../chain";
 import { homeNetwork, loadContext } from "../config";
 
 // `agent audit` — reconstruct the wallet's entire spend history from
@@ -24,11 +24,18 @@ export async function audit(opts: AuditOpts) {
   const wallet = readContract(network, "AgentWallet", walletAddr);
   const provider = providerFor(network);
 
-  const fromBlock = opts.fromBlock ? Number(opts.fromBlock) : 0;
-  const events = await wallet.queryFilter(
+  // Start the scan at the wallet's creation block (recorded in the context), not
+  // genesis — a from-0 scan trips public RPCs' eth_getLogs range caps, and the
+  // wallet has no events before it existed anyway. --from-block overrides.
+  const toBlock = await provider.getBlockNumber();
+  const fromBlock = opts.fromBlock
+    ? Number(opts.fromBlock)
+    : (ctx.createdBlock ?? 0);
+  const events = await chunkedQueryFilter(
+    wallet,
     wallet.filters.SpendExecuted(),
     fromBlock,
-    "latest",
+    toBlock,
   );
 
   console.log(`\n== agent audit on ${network} ==`);
