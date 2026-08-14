@@ -16,7 +16,7 @@ control plane — this is that control plane.**
 
 ## Status
 
-**All milestones (M1–M8) complete. Code frozen.**
+**All milestones (M1–M8) complete, plus a live two-chain testnet deployment.**
 - **M1 Foundation:** repo + CI scaffold, `AgentPayToken`, `PriceFeedAdapter`
   (live-oracle USD↔APT with staleness/sanity guards), `ServiceRegistry`.
 - **M2 The product:** `AgentWallet` + `AgentWalletFactory` enforcing the full spend
@@ -57,9 +57,15 @@ control plane — this is that control plane.**
 npm run audit   # lint -> tests -> coverage >=90% -> 24KB sizes -> Slither
 ```
 
-The one outstanding item is the **live testnet deployment** (needs funded
-throwaway keys); everything is scripted and proven against a local node and two
-simulated chains. See [HANDOFF.md](HANDOFF.md) §2.
+**Deployed live on 2026-08-12.** The full home stack runs on Ethereum Sepolia and
+the settlement stack on Base Sepolia, every contract source-verified on Etherscan
+/ Basescan. A real single-chain spend and a real **Sepolia → Base Sepolia
+cross-chain spend over CCIP** both landed end-to-end — home policy check → CCIP
+message → remote credit → provider withdrawal. The live run also surfaced a bug
+the mocked suite could not: a real CCIP OffRamp gates `ccipReceive` behind an
+ERC-165 `supportsInterface` check, so messages were reporting success while
+settling nothing. Addresses, tx hashes, and the full write-up are in
+[docs/addresses.md](docs/addresses.md) and [HANDOFF.md](HANDOFF.md) §2, §7.
 
 ## Architecture
 

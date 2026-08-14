@@ -274,8 +274,12 @@ proven without two real chains.
 
 ## 9. Known limitations (state these in the report; do not hide them)
 
-1. **No live testnet deployment yet.** The single outstanding item. Scripts are
-   idempotent and proven locally; needs funded throwaway keys.
+1. **Demo steps 4–6 were not re-run on live testnet.** The governance lifecycle
+   (`votingPeriod` 50 blocks + timelock delay) makes each live parameter change a
+   ~30-minute, multi-proposal affair. They are proven by the passing
+   `Governance.integration.test.ts` and the localhost `full-demo.ts` run, which
+   drive the same on-chain code paths; the live run prioritized the cross-chain
+   spend — the only milestone that genuinely required two real chains. See §7.
 2. **The cross-chain bridge is trusted.** Lock-and-credit with pre-funded remote
    liquidity; APT supply is not conserved cryptographically across chains.
 3. **Testnet-only affordances:** `faucet()`, a 24h oracle staleness bound (vs the
@@ -283,9 +287,8 @@ proven without two real chains.
 4. **No live emergency guardian.** Global pause goes through the timelock; a
    production system would add a guardian able to pause instantly.
 5. **Immutable deploys, no proxies** (deliberate, per brief) — a bug means
-   redeploy + migrate.
-6. **Base Sepolia ETH/USD feed address is unverified** — recorded from memory and
-   flagged; the M6 path does not depend on it.
+   redeploy + migrate. The post-M8 ERC-165 fix (§7) required redeploying the Base
+   receiver, which is exactly the cost this trade-off buys.
 
 ---
 
