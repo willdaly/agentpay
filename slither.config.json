@@ -5,7 +5,7 @@
     "",
     "EVERY exclusion below is a deliberate, reviewed decision — not a way to make",
     "the build green. Each detector class is justified here and in",
-    "docs/SECURITY_NOTES.md, with the full findings table in HANDOFF.md.",
+    "docs/SECURITY_NOTES.md, which carries the full findings table.",
     "Findings that were REAL were fixed, not excluded:",
     "  - missing-inheritance: CrossChainSpendRouter now formally implements",
     "    ICrossChainSpendRouter, so the compiler enforces the contract AgentWallet",

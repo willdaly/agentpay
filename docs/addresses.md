@@ -30,8 +30,8 @@ ownership to the timelock (DAO-only slashing).
 > **Deployed & verified live (2026-08-12):** the full home stack is on Ethereum
 > Sepolia and the settlement stack on Base Sepolia; every contract's source is
 > verified on the respective explorer (click **code**). A real single-chain spend
-> and a real Sepolia→Base **cross-chain** spend over CCIP both landed — see the
-> demo-transaction table in [HANDOFF.md](../HANDOFF.md).
+> and a real Sepolia→Base **cross-chain** spend over CCIP both landed — see
+> [Live demo transactions](#live-demo-transactions-2026-08-12) below.
 >
 > Deployer / demo actor for this run: `0xc72BBE24C21D98316e01CA4c8e8B9475A6E50255`.
 
@@ -93,3 +93,48 @@ npx hardhat run scripts/deploy/wire-lane.ts --network baseSepolia  # allowlists 
 The home side needs native ETH on the router for CCIP fees; the remote side needs
 APT liquidity on its router to settle incoming spends. `wire-lane.ts` provisions
 both and is idempotent.
+
+## Live demo transactions (2026-08-12)
+
+Deployer / demo actor: `0xc72BBE24C21D98316e01CA4c8e8B9475A6E50255`.
+
+### Single-chain spend (Ethereum Sepolia)
+
+| # | Step | Evidence |
+|---|------|----------|
+| 1 | Provider registers a service + stakes APT | [register](https://sepolia.etherscan.io/tx/0xb37c3624aad3c5e6670694d6fa8d3d50b9c6adbb71d3bea1b2d8647af119fa0d) · [stake](https://sepolia.etherscan.io/tx/0x00ec5da69022106c5608522459a415669996340276c7e7122e887e8d22ab8066) |
+| 2 | Wallet funded; owner sets allowlist + budget | wallet `0x8595…011f35`, funded 100 APT, allowlist + $10/day |
+| 3 | Spend lands; payment settles | [`0x0245e6…`](https://sepolia.etherscan.io/tx/0x0245e6e8d62281aa72800daf3f11061a3ea658c9b1f1d42aa43558b906eed9b7) — $0.50, provider withdrew |
+| 7 | `agent audit` rebuilds the log | spend reconstructed from `SpendExecuted` logs against the live RPC |
+
+Steps 4–6 (daily-budget rejection, governance raising `maxPerTxUsd`, global pause)
+exercise the governance lifecycle, whose `votingPeriod` (50 blocks) + timelock
+delay make each live parameter change a ~30-minute, multi-proposal affair. They
+are proven by `Governance.integration.test.ts` and the localhost `full-demo.ts`
+run, which drive the same on-chain code paths. The live run prioritized the
+cross-chain spend — the only milestone that genuinely required two real chains.
+
+### Cross-chain spend, Sepolia → Base Sepolia over CCIP — settled end-to-end
+
+| Leg | Evidence |
+|-----|----------|
+| Home spend routes over CCIP (Sepolia) | [`0xbb161b…`](https://sepolia.etherscan.io/tx/0xbb161b7b05f2231cc59ea6429113e8dc9535f0d1bdb78cddfbde8060c47ca9ea) — `SpendExecuted` 3.194 APT ($2.00), APT locked in the home router |
+| CCIP message | [`0xa14142dd…`](https://ccip.chain.link/msg/0xa14142dd2258f03b7fc04e41902195b29de06d3ca2e1fbef071b5944ba07d9e3) — delivered ~15 min later |
+| `ccipReceive` executes on Base | [`0x21ff2f30…`](https://sepolia.basescan.org/tx/0x21ff2f30948acf460e54a6a8bde3ef87b24958cc5f9f1592f72a839be363cfef) (block 45409567) — `CrossChainSpendReceived`, provider credited **3.194 APT** from remote liquidity |
+| Provider withdraws on Base | [`0xa1530d01…`](https://sepolia.basescan.org/tx/0xa1530d01689c8bd7426c0d656af8b264146ccb5c79b54699a6797c15739b3601) — 3.194 APT pulled from the remote escrow. Loop closed. |
+
+> **A real bug this live milestone caught.** The *first* live attempt (message
+> [`0x242734…`](https://ccip.chain.link/msg/0x242734f9a11c531dcee16b7c2de32b5b7615bd49d9d3e4c369089aac8be5f6db))
+> showed CCIP `state: SUCCESS` yet never credited the provider. A real CCIP
+> OffRamp calls `receiver.supportsInterface(IAny2EVMMessageReceiver)` (ERC-165)
+> *before* invoking `ccipReceive`, and silently skips the callback — still marking
+> the message success — if that check reverts. The router implemented
+> `ccipReceive` but not `supportsInterface`, so every cross-chain spend
+> "succeeded" at the CCIP layer while settling nothing. The M6 suite missed it
+> because the mock router called `ccipReceive` directly, bypassing the gate. The
+> router now declares ERC-165 support (verified on-chain:
+> `supportsInterface(0x85572ffb) => true`), the mock enforces the same gate so the
+> suite catches any regression, and a focused test asserts it. The Base receiver
+> was redeployed with the fix (`0x664079B23Db022344b08F8952b5Cb7964a65BfCd`,
+> re-verified on Basescan) and the spend above settled. Full analysis:
+> [SECURITY_NOTES.md](SECURITY_NOTES.md) → Finding X-01.

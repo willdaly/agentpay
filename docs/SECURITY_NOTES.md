@@ -151,7 +151,8 @@ movement, liquidity untouched).
   the gate is ever removed; a focused unit test asserts the interface ids directly.
 - **Live confirmation:** the Base receiver was redeployed with the fix
   (`0x664079B23Db022344b08F8952b5Cb7964a65BfCd`) and a real Sepolia→Base spend
-  settled end-to-end (credit + provider withdrawal) — see `HANDOFF.md` §7.
+  settled end-to-end (credit + provider withdrawal) — tx hashes in
+  [`addresses.md`](addresses.md#live-demo-transactions-2026-08-12).
 
 _Lesson: a mock that is more permissive than the real dependency produces false
 confidence. Mocks must replicate the dependency's guard conditions, not just its

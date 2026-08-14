@@ -48,7 +48,7 @@ async function main() {
   const ok = Object.values(results).filter((r) => /verified/.test(r)).length;
   console.log(`\n${ok}/${entries.length} verified (or already verified) on ${network.name}.`);
 
-  // Persist a small record for the HANDOFF / addresses tables.
+  // Persist a small record for the docs/addresses.md tables.
   const out = path.join(__dirname, "..", "..", "deployments", `${network.name}.verify.json`);
   fs.writeFileSync(out, JSON.stringify(results, null, 2) + "\n");
 }

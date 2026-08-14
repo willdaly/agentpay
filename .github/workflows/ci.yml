@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     # REQUIRED-PASS as of the M8 audit milestone, per the build brief. Every
     # finding is either fixed or excluded with a written rationale in
-    # slither.config.json (mirrored in docs/SECURITY_NOTES.md and HANDOFF.md),
+    # slither.config.json (mirrored in docs/SECURITY_NOTES.md),
     # so a new finding fails the build rather than being silently absorbed.
     steps:
       - uses: actions/checkout@v4

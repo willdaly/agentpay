@@ -10,8 +10,8 @@ first commit and updated at the close of each milestone.
 
 - **AI-generated**: initial code/tests/docs produced by Claude from the build brief.
 - **Human-directed**: the student set the architecture, constraints, and acceptance
-  criteria (see `CAPSTONE_BUILD_BRIEF.md`), reviewed all output, and decided what to
-  keep, change, or reject.
+  criteria in a written build brief produced before any implementation, reviewed all
+  output, and decided what to keep, change, or reject.
 - **Hand-modified**: files the student edited directly after generation.
 
 All third-party dependencies (OpenZeppelin, Chainlink) are attributed with versions
@@ -38,7 +38,7 @@ and licenses in the README.
 
 **Design decisions made by the student (recorded in the build brief) and applied by AI:**
 - Chains, oracle strategy, token model, framework, contract suite, and milestone
-  order were all specified up front in `CAPSTONE_BUILD_BRIEF.md`.
+  order were all specified up front in the build brief, before any code was written.
 - Notable implementation choice surfaced during the build: APT is priced by combining
   the **live** Chainlink ETH/USD feed with a fixed, documented APT↔ETH demo peg, so
   the oracle genuinely gates on-chain behavior (a graded requirement) rather than a
@@ -349,7 +349,8 @@ rather than collapsing owner and agent onto one key to make the demo pass.
 - `scripts/check-sizes.js` — 24KB EIP-170 gate over product contracts.
 - `.github/workflows/ci.yml` — Slither flipped to **required-pass**
   (`fail-on: all`); new `sizes-and-gas` job.
-- `HANDOFF.md` (brief §11); `docs/SECURITY_NOTES.md` findings log; README polish.
+- Milestone handoff notes (brief §11); `docs/SECURITY_NOTES.md` findings log;
+  README polish.
 - `npm run audit` — one command for the whole gate.
 - Two contract fixes (below).
 
@@ -380,10 +381,11 @@ coverage 100% lines / 95.52% branches over 19 product contracts, all 12 contract
 under 24KB (largest: `PolicyGovernor` at 74.8%, inheriting the full OZ Governor
 stack), Slither 0 findings.
 
-**Stated honestly in HANDOFF.md rather than glossed:** no live testnet deployment
-yet (the one outstanding item); the cross-chain bridge is trusted; the CCIP leg is
-proven only against simulated chains; testnet-only affordances (`faucet()`, 24h
-staleness bound, 60s timelock, synthetic APT peg) are enumerated.
+**Stated honestly rather than glossed (as of M8):** no live testnet deployment yet
+(the one outstanding item at this milestone — see the post-M8 entry below); the
+cross-chain bridge is trusted; the CCIP leg is proven only against simulated
+chains; testnet-only affordances (`faucet()`, 24h staleness bound, 60s timelock,
+synthetic APT peg) are enumerated.
 
 **Hand-modified:** _(record any direct edits here as they happen)_
 
@@ -401,7 +403,7 @@ staleness bound, 60s timelock, synthetic APT peg) are enumerated.
   `verify-all.ts` (Etherscan V2 unified-key verification of both chains),
   `scripts/demo/cross-chain-{spend,verify}.ts`.
 - A real Sepolia→Base cross-chain spend settled end-to-end (home policy → CCIP →
-  remote credit → provider withdrawal). Tx hashes in `HANDOFF.md` §7.
+  remote credit → provider withdrawal). Tx hashes in `docs/addresses.md`.
 
 **Bugs the live deploy surfaced, each fixed at the root (verified by running):**
 1. `DEPLOYER_PRIVATE_KEY` without a `0x` prefix left deploys with no account —
@@ -419,12 +421,12 @@ staleness bound, 60s timelock, synthetic APT peg) are enumerated.
    **hardened the mock to enforce the same ERC165 gate** (the mock's fidelity gap
    was why the M6 suite missed it), added a regression test, redeployed + verified
    the Base receiver, and confirmed a real spend settles. See `SECURITY_NOTES.md`
-   → Finding X-01 and `HANDOFF.md` §7.
+   → Finding X-01, and `docs/addresses.md` for the tx hashes.
 
 **Re-verified after the contract change:** 199 tests, 100% line / 95.55% branch
 coverage, Slither 0 findings, all sizes under 24KB, solhint 0 errors.
 
-**Honest deviations (in HANDOFF):** governance demo steps 4–6 were not re-run live
+**Honest deviations:** governance demo steps 4–6 were not re-run live
 (their voting-period + timelock waits make a live run impractical; proven by the
 governance integration test + localhost demo); the Sepolia *sender* router was not
 redeployed (its receiver path is unused in the Sepolia→Base direction and
