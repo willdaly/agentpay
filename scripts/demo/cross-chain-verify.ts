@@ -69,7 +69,7 @@ async function main() {
 
   console.log(`\n${events.length} cross-chain spend(s) received (from logs):`);
   for (const e of events) {
-    const a = (e as ethers.EventLog).args;
+    const a = e.args;
     console.log(
       `  block ${e.blockNumber}  service #${a.serviceId}  ` +
         `${ethers.formatEther(a.amount)} APT -> ${a.provider}  msgId ${a.messageId}`,
